@@ -67,10 +67,59 @@ class General(commands.Cog):
         ai = getattr(self.bot, "ai_client", None)
         embed.add_field(name="Claude AI", value="Online" if ai else "Offline", inline=True)
 
+        bungie = getattr(self.bot, "bungie", None)
+        embed.add_field(name="Bungie API", value="Online" if bungie else "Offline", inline=True)
+
         all_ok = "ERROR" not in db_status and "Not connected" not in db_status
         embed.colour = 0x00FF88 if all_ok else 0xFF4444
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="netcapture", description="How to set up network capture")
+    @app_commands.guilds(GUILD)
+    async def netcapture(self, interaction: discord.Interaction) -> None:
+        embed = discord.Embed(
+            title="Network Capture Agent",
+            description=(
+                "Capture live network telemetry from your Marathon sessions "
+                "and contribute server performance data to the community."
+            ),
+            colour=0x00BFFF,
+        )
+        embed.add_field(
+            name="1. Install tshark",
+            value=(
+                "**Windows:** [wireshark.org/download](https://www.wireshark.org/download.html)\n"
+                "**macOS:** `brew install wireshark`\n"
+                "**Linux:** `sudo apt install tshark`"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="2. Download the agent",
+            value=f"Get `netcapture.py` from the [GitHub repo](https://github.com/baxterfied/marathon-data-intel/blob/main/utils/netcapture.py)",
+            inline=False,
+        )
+        embed.add_field(
+            name="3. Run it",
+            value=(
+                "```\npython netcapture.py --user-hash YOUR_NAME\n```\n"
+                "Then start Marathon and play. Network data is captured automatically "
+                "and submitted every 60 seconds."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Options",
+            value=(
+                "`--interface eth0` — pick a specific network interface\n"
+                "`--patch 1.0.1` — tag data with current patch\n"
+                "`--dry-run` — print stats without submitting"
+            ),
+            inline=False,
+        )
+        embed.set_footer(text="Requires admin/root for packet capture")
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
