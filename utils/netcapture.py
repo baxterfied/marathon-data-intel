@@ -43,9 +43,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("netcapture")
 
-# Marathon game ports (UDP) — main range 63006-63059, plus auxiliary ports
-GAME_PORTS_RANGE = (63006, 63059)
-GAME_PORTS_EXTRA = {53932, 55575, 57787}
+# Marathon game ports (UDP)
+# Primary: Steam Datagram Relay ports used by Marathon
+# Secondary: previously observed auxiliary ports
+GAME_PORTS_RANGE = (27015, 27200)  # Steam/Valve relay range
+GAME_PORTS_EXTRA = {63006, 63007, 63008, 63009, 63059, 53932, 55575, 57787}
 # How often to submit a snapshot (seconds)
 SUBMIT_INTERVAL = 60
 # Minimum packets to consider a server active
