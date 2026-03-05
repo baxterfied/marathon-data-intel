@@ -252,19 +252,25 @@ def detect_interface(tshark: str) -> str:
             [tshark, "-D"], capture_output=True, text=True, timeout=5
         )
         lines = result.stdout.strip().split("\n")
+        # Skip virtual/loopback interfaces
+        skip_keywords = ["loopback", "lo", "vethernet", "vmware", "virtualbox", "hyper-v", "docker", "wsl", "npcap"]
+        # Prefer real ethernet/wifi interfaces
         for line in lines:
             lower = line.lower()
-            # Prefer ethernet/wifi interfaces
+            if any(kw in lower for kw in skip_keywords):
+                continue
             if any(kw in lower for kw in ["ethernet", "eth0", "en0", "wi-fi", "wlan", "wifi"]):
                 iface = line.split(".")[0].strip()
                 log.info("Selected interface: %s", line.strip())
                 return iface
-        # Fall back to first non-loopback
+        # Fall back to first non-virtual, non-loopback
         for line in lines:
-            if "loopback" not in line.lower() and "lo" not in line.lower():
-                iface = line.split(".")[0].strip()
-                log.info("Selected interface: %s", line.strip())
-                return iface
+            lower = line.lower()
+            if any(kw in lower for kw in skip_keywords):
+                continue
+            iface = line.split(".")[0].strip()
+            log.info("Selected interface: %s", line.strip())
+            return iface
     except Exception as exc:
         log.warning("Could not detect interface: %s", exc)
     return "1"  # Default to first interface
