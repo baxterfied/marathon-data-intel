@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network - Marathon Data Intel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+        .header { background: #161b22; border-bottom: 1px solid #00ff8820; padding: 20px; text-align: center; }
+        .header h1 { color: #00ff88; font-size: 1.8rem; }
+        .nav { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+        .nav a { color: #00ff88; text-decoration: none; padding: 6px 12px; border: 1px solid #00ff8840; border-radius: 4px; font-size: 0.85rem; }
+        .nav a:hover { background: #00ff8820; }
+        .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
+        .region-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+        .region-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+        .region-card h3 { margin-bottom: 12px; font-size: 1.1rem; }
+        .metric { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; }
+        .metric:last-child { border-bottom: none; }
+        .metric .label { color: #8b949e; }
+        .metric .value { font-weight: bold; }
+        .good { color: #00ff88; }
+        .warn { color: #ffcc00; }
+        .bad { color: #ff4444; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .status-good { background: #00ff88; }
+        .status-warn { background: #ffcc00; }
+        .status-bad { background: #ff4444; }
+        #loading { text-align: center; padding: 40px; color: #8b949e; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Server Performance</h1>
+        <div class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/network">Network</a>
+            <a href="/api-tool">API Tool</a>
+        </div>
+    </div>
+    <div class="container">
+        <div id="content"><div id="loading">Loading network data...</div></div>
+    </div>
+    <script>
+        async function load() {
+            try {
+                const res = await fetch('/api/network/regions');
+                const data = await res.json();
+                const regions = data.regions || [];
+                if (!regions.length) { document.getElementById('content').innerHTML = '<p style="text-align:center;color:#8b949e;padding:40px">No network data yet. Submit data via POST /api/network</p>'; return; }
+                let html = '<div class="region-grid">';
+                regions.forEach(r => {
+                    const pingCls = r.avg_ping < 50 ? 'good' : r.avg_ping < 100 ? 'warn' : 'bad';
+                    const dotCls = r.avg_ping < 50 ? 'status-good' : r.avg_ping < 100 ? 'status-warn' : 'status-bad';
+                    html += `<div class="region-card">
+                        <h3><span class="status-dot ${dotCls}"></span>${r.region}</h3>
+                        <div class="metric"><span class="label">Avg Ping</span><span class="value ${pingCls}">${r.avg_ping}ms</span></div>
+                        <div class="metric"><span class="label">Avg Jitter</span><span class="value">${r.avg_jitter}ms</span></div>
+                        <div class="metric"><span class="label">Packet Loss</span><span class="value">${r.avg_loss}%</span></div>
+                        <div class="metric"><span class="label">Samples</span><span class="value">${r.samples}</span></div>
+                    </div>`;
+                });
+                html += '</div>';
+                document.getElementById('content').innerHTML = html;
+            } catch { document.getElementById('content').innerHTML = '<p style="text-align:center;color:#8b949e">Failed to load</p>'; }
+        }
+        load();
+    </script>
+</body>
+</html>

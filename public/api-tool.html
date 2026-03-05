@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Tool - Marathon Data Intel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+        .header { background: #161b22; border-bottom: 1px solid #00ff8820; padding: 20px; text-align: center; }
+        .header h1 { color: #00ff88; font-size: 1.8rem; }
+        .nav { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+        .nav a { color: #00ff88; text-decoration: none; padding: 6px 12px; border: 1px solid #00ff8840; border-radius: 4px; font-size: 0.85rem; }
+        .nav a:hover { background: #00ff8820; }
+        .container { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+        .tool { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
+        .tool h3 { color: #00ff88; margin-bottom: 12px; }
+        select, input, textarea { background: #0d1117; border: 1px solid #30363d; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; font-family: inherit; width: 100%; margin-bottom: 8px; }
+        select { cursor: pointer; }
+        button { background: #00ff88; color: #0a0a0f; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+        button:hover { background: #00cc6a; }
+        .response { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 16px; margin-top: 12px; white-space: pre-wrap; font-family: 'Fira Code', monospace, monospace; font-size: 0.85rem; max-height: 400px; overflow-y: auto; display: none; }
+        .endpoint-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 20px; }
+        .endpoint { background: #21262d; padding: 12px; border-radius: 4px; font-size: 0.85rem; }
+        .method { font-weight: bold; margin-right: 8px; }
+        .get { color: #00ff88; }
+        .post { color: #ffcc00; }
+        .path { color: #e0e0e0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>API Intel Tool</h1>
+        <div class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/network">Network</a>
+            <a href="/api-tool">API Tool</a>
+            <a href="/docs">Swagger Docs</a>
+        </div>
+    </div>
+    <div class="container">
+        <div class="tool">
+            <h3>Quick Query</h3>
+            <select id="endpoint">
+                <option value="/api/health">GET /api/health</option>
+                <option value="/api/community-stats">GET /api/community-stats</option>
+                <option value="/api/runners">GET /api/runners</option>
+                <option value="/api/meta/current">GET /api/meta/current</option>
+                <option value="/api/meta/history">GET /api/meta/history</option>
+                <option value="/api/leaderboard">GET /api/leaderboard</option>
+                <option value="/api/network">GET /api/network</option>
+                <option value="/api/network/regions">GET /api/network/regions</option>
+                <option value="/api/patches">GET /api/patches</option>
+            </select>
+            <button onclick="query()">Send Request</button>
+            <div id="response" class="response"></div>
+        </div>
+
+        <div class="tool">
+            <h3>Runner Lookup</h3>
+            <input type="text" id="runner-name" placeholder="Runner name (e.g. LOCUS)">
+            <button onclick="lookupRunner()">Lookup</button>
+            <div id="runner-response" class="response"></div>
+        </div>
+
+        <div class="tool">
+            <h3>Submit Match</h3>
+            <textarea id="match-json" rows="10" placeholder='{
+  "user_hash": "your_hash",
+  "runner_name": "LOCUS",
+  "map_name": "Facility 9",
+  "mode": "extraction",
+  "result": "win",
+  "kills": 15,
+  "deaths": 5,
+  "assists": 3,
+  "damage": 4200,
+  "duration_s": 480,
+  "patch": "1.0"
+}'></textarea>
+            <button onclick="submitMatch()">Submit Match</button>
+            <div id="match-response" class="response"></div>
+        </div>
+
+        <h3 style="color: #00ff88; margin-top: 30px; margin-bottom: 10px;">All Endpoints</h3>
+        <div class="endpoint-list">
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/health</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/community-stats</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/runners</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/runners/{name}</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/runners/{name}/matches</span></div>
+            <div class="endpoint"><span class="method post">POST</span><span class="path">/api/matches</span></div>
+            <div class="endpoint"><span class="method post">POST</span><span class="path">/api/network</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/network</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/network/regions</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/leaderboard</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/patches</span></div>
+            <div class="endpoint"><span class="method post">POST</span><span class="path">/api/patches</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/meta/current</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/meta/history</span></div>
+            <div class="endpoint"><span class="method get">GET</span><span class="path">/api/recap/{user_hash}</span></div>
+        </div>
+    </div>
+    <script>
+        async function query() {
+            const el = document.getElementById('response');
+            const endpoint = document.getElementById('endpoint').value;
+            el.style.display = 'block';
+            el.textContent = 'Loading...';
+            try {
+                const res = await fetch(endpoint);
+                const data = await res.json();
+                el.textContent = JSON.stringify(data, null, 2);
+            } catch (e) { el.textContent = 'Error: ' + e.message; }
+        }
+        async function lookupRunner() {
+            const el = document.getElementById('runner-response');
+            const name = document.getElementById('runner-name').value.trim();
+            if (!name) return;
+            el.style.display = 'block';
+            el.textContent = 'Loading...';
+            try {
+                const res = await fetch('/api/runners/' + encodeURIComponent(name));
+                const data = await res.json();
+                el.textContent = JSON.stringify(data, null, 2);
+            } catch (e) { el.textContent = 'Error: ' + e.message; }
+        }
+        async function submitMatch() {
+            const el = document.getElementById('match-response');
+            const json = document.getElementById('match-json').value;
+            el.style.display = 'block';
+            el.textContent = 'Submitting...';
+            try {
+                const res = await fetch('/api/matches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json });
+                const data = await res.json();
+                el.textContent = JSON.stringify(data, null, 2);
+            } catch (e) { el.textContent = 'Error: ' + e.message; }
+        }
+    </script>
+</body>
+</html>

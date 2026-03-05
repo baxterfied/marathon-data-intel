@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marathon Data Intel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+        .hero { background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%); border-bottom: 1px solid #00ff8820; padding: 60px 20px; text-align: center; }
+        .hero h1 { font-size: 3rem; color: #00ff88; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 10px; }
+        .hero p { font-size: 1.1rem; color: #8b949e; max-width: 600px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 30px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; transition: border-color 0.2s; }
+        .card:hover { border-color: #00ff88; }
+        .card h3 { color: #00ff88; margin-bottom: 8px; font-size: 1.2rem; }
+        .card p { color: #8b949e; font-size: 0.9rem; line-height: 1.5; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-top: 20px; }
+        .stat { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; text-align: center; }
+        .stat .value { font-size: 2rem; font-weight: bold; color: #00ff88; }
+        .stat .label { font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+        .nav { display: flex; justify-content: center; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
+        .nav a { color: #00ff88; text-decoration: none; padding: 8px 16px; border: 1px solid #00ff8840; border-radius: 4px; transition: all 0.2s; }
+        .nav a:hover { background: #00ff8820; border-color: #00ff88; }
+        .tier-list { margin-top: 30px; }
+        .tier-row { display: flex; align-items: center; margin-bottom: 8px; }
+        .tier-label { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; border-radius: 4px; margin-right: 12px; }
+        .tier-s { background: #ff4444; color: white; }
+        .tier-a { background: #ff8800; color: white; }
+        .tier-b { background: #ffcc00; color: black; }
+        .tier-c { background: #44aa44; color: white; }
+        .tier-runners { display: flex; gap: 8px; flex-wrap: wrap; }
+        .runner-tag { background: #21262d; padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; border: 1px solid #30363d; }
+        #loading { text-align: center; padding: 40px; color: #8b949e; }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>Marathon Data Intel</h1>
+        <p>Community-powered stats, meta analysis, and competitive intelligence for Bungie's Marathon</p>
+        <div class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/network">Network</a>
+            <a href="/api-tool">API Tool</a>
+            <a href="/docs">API Docs</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 style="color: #00ff88; margin-bottom: 10px;">Community Overview</h2>
+        <div id="stats" class="stat-grid">
+            <div id="loading">Loading stats...</div>
+        </div>
+
+        <h2 style="color: #00ff88; margin-top: 40px; margin-bottom: 10px;">Meta Tier List</h2>
+        <div id="tier-list" class="tier-list">
+            <div id="tier-loading" style="color: #8b949e;">Loading meta...</div>
+        </div>
+
+        <h2 style="color: #00ff88; margin-top: 40px; margin-bottom: 10px;">Features</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>Live Stats</h3>
+                <p>Community win rates, K/D ratios, and runner performance tracked across all submitted matches.</p>
+            </div>
+            <div class="card">
+                <h3>AI Analysis</h3>
+                <p>Claude-powered meta reports, patch impact analysis, and natural language questions in Discord.</p>
+            </div>
+            <div class="card">
+                <h3>Network Intel</h3>
+                <p>Server performance data correlated with match outcomes. Track ping, jitter, and packet loss by region.</p>
+            </div>
+            <div class="card">
+                <h3>Loadout Engine</h3>
+                <p>Data-backed loadout recommendations per runner per map, based on community win rates.</p>
+            </div>
+            <div class="card">
+                <h3>Patch Tracker</h3>
+                <p>Every patch logged with AI-generated impact analysis showing meta shifts and tier changes.</p>
+            </div>
+            <div class="card">
+                <h3>Full API</h3>
+                <p>REST API for everything. Submit matches, query stats, pull leaderboards. Build your own tools.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/community-stats');
+                const data = await res.json();
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat"><div class="value">${(data.total_matches || 0).toLocaleString()}</div><div class="label">Matches</div></div>
+                    <div class="stat"><div class="value">${(data.unique_players || 0).toLocaleString()}</div><div class="label">Players</div></div>
+                    <div class="stat"><div class="value">${data.runners_used || 0}</div><div class="label">Runners Used</div></div>
+                    <div class="stat"><div class="value">${data.avg_kills || 0}</div><div class="label">Avg Kills</div></div>
+                    <div class="stat"><div class="value">${data.avg_deaths || 0}</div><div class="label">Avg Deaths</div></div>
+                    <div class="stat"><div class="value">${(data.avg_damage || 0).toLocaleString()}</div><div class="label">Avg Damage</div></div>
+                `;
+            } catch {
+                document.getElementById('stats').innerHTML = '<div class="stat"><div class="label">Could not load stats</div></div>';
+            }
+        }
+
+        async function loadMeta() {
+            try {
+                const res = await fetch('/api/meta/current');
+                const data = await res.json();
+                const tierColors = { S: 'tier-s', A: 'tier-a', B: 'tier-b', C: 'tier-c', D: 'tier-c' };
+                let html = '';
+                for (const tier of ['S', 'A', 'B', 'C', 'D']) {
+                    const runners = data.meta[tier];
+                    if (!runners || !runners.length) continue;
+                    const tags = runners.map(r => `<span class="runner-tag">${r.name} (${r.win_rate}% WR)</span>`).join('');
+                    html += `<div class="tier-row"><div class="tier-label ${tierColors[tier]}">${tier}</div><div class="tier-runners">${tags}</div></div>`;
+                }
+                document.getElementById('tier-list').innerHTML = html || '<p style="color:#8b949e">No runner data</p>';
+            } catch {
+                document.getElementById('tier-list').innerHTML = '<p style="color:#8b949e">Could not load meta</p>';
+            }
+        }
+
+        loadStats();
+        loadMeta();
+    </script>
+</body>
+</html>
