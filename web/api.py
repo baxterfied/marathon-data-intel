@@ -734,6 +734,13 @@ def create_app(bot) -> FastAPI:
             return FileResponse(f)
         raise HTTPException(404)
 
+    @app.get("/me")
+    async def dashboard_page():
+        f = PUBLIC_DIR / "dashboard.html"
+        if f.exists():
+            return FileResponse(f)
+        raise HTTPException(404)
+
     @app.get("/capture")
     async def capture_page():
         f = PUBLIC_DIR / "capture.html"

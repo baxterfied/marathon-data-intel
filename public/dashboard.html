@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard | Marathon Intel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+        /* Login screen */
+        .login-screen {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px;
+        }
+        .login-screen h1 { font-family: 'Bebas Neue', sans-serif; font-size: 2.8rem; color: #00ff88; letter-spacing: 5px; margin-bottom: 8px; }
+        .login-screen p { color: #8b949e; margin-bottom: 24px; }
+        .login-box { display: flex; gap: 8px; }
+        .login-box input {
+            background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            padding: 12px 16px; color: #e0e0e0; font-size: 1rem; width: 260px;
+            font-family: 'Space Mono', monospace;
+        }
+        .login-box input:focus { outline: none; border-color: #00ff88; }
+        .login-box button {
+            background: #00ff88; color: #0a0a0f; border: none; border-radius: 6px;
+            padding: 12px 24px; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem;
+            letter-spacing: 2px; cursor: pointer;
+        }
+        .login-box button:hover { background: #00dd77; }
+        .login-hint { color: #6b7280; font-size: 0.8rem; margin-top: 12px; font-family: 'Space Mono', monospace; }
+
+        /* Dashboard */
+        .dashboard { display: none; }
+        .topbar {
+            background: #0d1117; border-bottom: 1px solid #00ff8830;
+            padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .topbar h1 { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: #00ff88; letter-spacing: 3px; }
+        .topbar .user { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #8b949e; }
+        .topbar .live-dot { width: 8px; height: 8px; background: #00ff88; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .topbar-right { display: flex; gap: 12px; align-items: center; }
+        .topbar-right .refresh-info { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #6b7280; }
+        .topbar-right button {
+            background: transparent; color: #8b949e; border: 1px solid #30363d;
+            padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+        }
+        .topbar-right button:hover { border-color: #00ff88; color: #00ff88; }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 20px; }
+        .grid-full { grid-column: 1 / -1; }
+        .grid-2 { grid-column: span 2; }
+
+        .panel {
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+        }
+        .panel-header {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; color: #00ff88;
+            letter-spacing: 2px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+        }
+        .panel-header .icon { font-size: 1rem; }
+
+        /* Session stats row */
+        .session-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+        .session-stat { text-align: center; flex: 1; min-width: 80px; }
+        .session-stat .val {
+            font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #fff; line-height: 1;
+        }
+        .session-stat .lbl {
+            font-family: 'Space Mono', monospace; font-size: 0.65rem; color: #8b949e;
+            text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;
+        }
+        .val-green { color: #00ff88 !important; }
+        .val-red { color: #ff4455 !important; }
+        .val-yellow { color: #ffcc00 !important; }
+
+        /* Streak bar */
+        .streak-bar { display: flex; gap: 4px; margin-top: 8px; }
+        .streak-block { width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; }
+        .streak-w { background: #00ff8830; color: #00ff88; border: 1px solid #00ff8850; }
+        .streak-l { background: #ff445530; color: #ff4455; border: 1px solid #ff445550; }
+        .streak-d { background: #ffcc0030; color: #ffcc00; border: 1px solid #ffcc0050; }
+
+        /* Match list */
+        .match-row {
+            display: flex; align-items: center; gap: 12px; padding: 8px 0;
+            border-bottom: 1px solid #1e2228; font-size: 0.85rem;
+        }
+        .match-row:last-child { border-bottom: none; }
+        .match-result {
+            width: 36px; height: 24px; border-radius: 4px; display: flex;
+            align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem;
+        }
+        .match-win { background: #00ff8830; color: #00ff88; }
+        .match-loss { background: #ff445530; color: #ff4455; }
+        .match-draw { background: #ffcc0030; color: #ffcc00; }
+        .match-runner { font-weight: 600; color: #fff; min-width: 80px; }
+        .match-map { color: #8b949e; flex: 1; }
+        .match-kd { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #c0c0c0; }
+        .match-time { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #6b7280; }
+
+        /* Loadout recommendation */
+        .loadout-card {
+            background: #1a1d24; border: 1px solid #2a2e38; border-radius: 6px;
+            padding: 12px; margin-bottom: 8px;
+        }
+        .loadout-card .runner { font-weight: 700; color: #00ff88; font-size: 1rem; }
+        .loadout-card .weapons { color: #c0c0c0; font-size: 0.9rem; margin-top: 4px; }
+        .loadout-card .wr { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+
+        /* Network indicator */
+        .net-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .net-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .net-good { background: #00ff88; }
+        .net-mid { background: #ffcc00; }
+        .net-bad { background: #ff4455; }
+        .net-label { font-size: 0.9rem; color: #c0c0c0; }
+        .net-val { font-family: 'Space Mono', monospace; font-size: 0.85rem; color: #fff; margin-left: auto; }
+
+        /* Runner tier quick ref */
+        .tier-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .tier-badge {
+            width: 24px; height: 24px; border-radius: 4px; display: flex;
+            align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;
+        }
+        .t-s { background: #ff4444; color: #fff; }
+        .t-a { background: #ff8800; color: #fff; }
+        .t-b { background: #ffcc00; color: #000; }
+        .t-c { background: #44aa44; color: #fff; }
+        .t-d { background: #6b7280; color: #fff; }
+        .tier-runners { font-size: 0.85rem; color: #c0c0c0; }
+        .tier-runners strong { color: #fff; }
+
+        /* TTK quick ref */
+        .ttk-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #1e2228; font-size: 0.82rem; }
+        .ttk-row:last-child { border-bottom: none; }
+        .ttk-name { color: #fff; font-weight: 600; min-width: 120px; }
+        .ttk-val { font-family: 'Space Mono', monospace; color: #00ff88; }
+        .ttk-shots { font-family: 'Space Mono', monospace; color: #8b949e; font-size: 0.75rem; }
+
+        .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
+
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr 1fr; }
+            .grid-2 { grid-column: span 2; }
+        }
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+            .grid-2, .grid-full { grid-column: 1; }
+            .session-stat .val { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="login-screen" id="loginScreen">
+    <h1>Marathon Intel</h1>
+    <p>Your personal companion dashboard</p>
+    <div class="login-box">
+        <input type="text" id="loginHash" placeholder="Enter your user hash" autofocus>
+        <button onclick="enterDashboard()">GO</button>
+    </div>
+    <div class="login-hint">Same hash you use in Discord or the capture agent</div>
+</div>
+
+<!-- Dashboard -->
+<div class="dashboard" id="dashboard">
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="live-dot"></div>
+            <h1>Marathon Intel</h1>
+            <span class="user" id="displayHash"></span>
+        </div>
+        <div class="topbar-right">
+            <span class="refresh-info" id="refreshInfo">Refreshing every 30s</span>
+            <button onclick="refreshAll()">Refresh</button>
+            <button onclick="logout()">Switch</button>
+        </div>
+    </div>
+
+    <div class="grid">
+        <!-- Session Overview -->
+        <div class="panel grid-full">
+            <div class="panel-header"><span class="icon">&#9889;</span> Session Overview</div>
+            <div class="session-stats" id="sessionStats">
+                <div class="session-stat"><div class="val" id="sMatches">—</div><div class="lbl">Matches</div></div>
+                <div class="session-stat"><div class="val" id="sWins">—</div><div class="lbl">Wins</div></div>
+                <div class="session-stat"><div class="val" id="sLosses">—</div><div class="lbl">Losses</div></div>
+                <div class="session-stat"><div class="val" id="sWinRate">—</div><div class="lbl">Win Rate</div></div>
+                <div class="session-stat"><div class="val" id="sKD">—</div><div class="lbl">K/D</div></div>
+                <div class="session-stat"><div class="val" id="sKills">—</div><div class="lbl">Kills</div></div>
+                <div class="session-stat"><div class="val" id="sDeaths">—</div><div class="lbl">Deaths</div></div>
+                <div class="session-stat"><div class="val" id="sDamage">—</div><div class="lbl">Avg Dmg</div></div>
+            </div>
+            <div class="streak-bar" id="streakBar"></div>
+        </div>
+
+        <!-- Recent Matches -->
+        <div class="panel grid-2">
+            <div class="panel-header"><span class="icon">&#128200;</span> Recent Matches</div>
+            <div id="recentMatches"><div class="empty-state">No matches yet</div></div>
+        </div>
+
+        <!-- Network Status -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#128225;</span> Network</div>
+            <div id="networkPanel"><div class="empty-state">No network data</div></div>
+        </div>
+
+        <!-- Recommended Loadouts -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#127919;</span> Recommended Loadouts</div>
+            <div id="loadoutPanel"><div class="empty-state">Play some matches first</div></div>
+        </div>
+
+        <!-- Meta Quick Ref -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#127942;</span> Meta Tier List</div>
+            <div id="metaPanel"><div class="empty-state">Loading...</div></div>
+        </div>
+
+        <!-- TTK Quick Reference -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#9876;</span> TTK Quick Ref (100 HP)</div>
+            <div id="ttkPanel"><div class="empty-state">Loading...</div></div>
+        </div>
+
+        <!-- Server Status -->
+        <div class="panel grid-full">
+            <div class="panel-header"><span class="icon">&#128994;</span> Server Status</div>
+            <div id="serverStatus" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let userHash = localStorage.getItem('marathon_hash') || '';
+let refreshTimer = null;
+
+function enterDashboard() {
+    const input = document.getElementById('loginHash').value.trim();
+    if (!input) return;
+    userHash = input;
+    localStorage.setItem('marathon_hash', userHash);
+    showDashboard();
+}
+
+function logout() {
+    localStorage.removeItem('marathon_hash');
+    userHash = '';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    if (refreshTimer) clearInterval(refreshTimer);
+}
+
+function showDashboard() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('displayHash').textContent = userHash;
+    refreshAll();
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(refreshAll, 30000);
+}
+
+document.getElementById('loginHash').addEventListener('keydown', e => {
+    if (e.key === 'Enter') enterDashboard();
+});
+
+async function refreshAll() {
+    document.getElementById('refreshInfo').textContent = 'Refreshing...';
+    await Promise.all([
+        loadRecap(),
+        loadStreaks(),
+        loadNetwork(),
+        loadMeta(),
+        loadLoadouts(),
+        loadTTK(),
+        loadServerStatus(),
+    ]);
+    document.getElementById('refreshInfo').textContent =
+        'Updated ' + new Date().toLocaleTimeString() + ' · Auto-refresh 30s';
+}
+
+async function loadRecap() {
+    try {
+        const res = await fetch(`/api/recap/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error('No data');
+        const d = await res.json();
+
+        document.getElementById('sMatches').textContent = d.matches;
+        document.getElementById('sWins').textContent = d.wins;
+        document.getElementById('sWins').className = 'val val-green';
+        document.getElementById('sLosses').textContent = d.losses;
+        document.getElementById('sLosses').className = 'val val-red';
+
+        const wr = d.win_rate;
+        const wrEl = document.getElementById('sWinRate');
+        wrEl.textContent = wr + '%';
+        wrEl.className = 'val ' + (wr >= 55 ? 'val-green' : wr >= 45 ? 'val-yellow' : 'val-red');
+
+        const kd = d.kd;
+        const kdEl = document.getElementById('sKD');
+        kdEl.textContent = kd.toFixed(2);
+        kdEl.className = 'val ' + (kd >= 1.5 ? 'val-green' : kd >= 1.0 ? 'val-yellow' : 'val-red');
+
+        document.getElementById('sKills').textContent = d.total_kills;
+        document.getElementById('sDeaths').textContent = d.total_deaths;
+
+        // Avg damage
+        const totalDmg = d.recent_matches.reduce((s, m) => s + (m.damage || 0), 0);
+        const avgDmg = d.matches > 0 ? Math.round(totalDmg / d.matches) : 0;
+        document.getElementById('sDamage').textContent = avgDmg.toLocaleString();
+
+        // Recent matches list
+        const matchesHtml = d.recent_matches.slice(0, 8).map(m => {
+            const rc = m.result === 'win' ? 'match-win' : m.result === 'loss' ? 'match-loss' : 'match-draw';
+            const rl = m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : 'D';
+            const ago = timeAgo(m.created_at);
+            return `<div class="match-row">
+                <div class="match-result ${rc}">${rl}</div>
+                <div class="match-runner">${m.runner_name}</div>
+                <div class="match-map">${m.map_name}</div>
+                <div class="match-kd">${m.kills}/${m.deaths}</div>
+                <div class="match-time">${ago}</div>
+            </div>`;
+        }).join('');
+        document.getElementById('recentMatches').innerHTML = matchesHtml || '<div class="empty-state">No matches</div>';
+
+    } catch {
+        document.getElementById('recentMatches').innerHTML = '<div class="empty-state">No match data yet — submit matches or run the capture agent</div>';
+    }
+}
+
+async function loadStreaks() {
+    try {
+        const res = await fetch(`/api/streaks/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error('No data');
+        const d = await res.json();
+
+        const bar = d.last_10.map(r => {
+            const cls = r === 'win' ? 'streak-w' : r === 'loss' ? 'streak-l' : 'streak-d';
+            const lbl = r === 'win' ? 'W' : r === 'loss' ? 'L' : 'D';
+            return `<div class="streak-block ${cls}">${lbl}</div>`;
+        }).join('');
+        document.getElementById('streakBar').innerHTML = bar;
+    } catch {
+        document.getElementById('streakBar').innerHTML = '';
+    }
+}
+
+async function loadNetwork() {
+    try {
+        const res = await fetch('/api/network/regions');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+        if (!d.regions || !d.regions.length) throw new Error();
+
+        const html = d.regions.map(r => {
+            const ping = parseFloat(r.avg_ping);
+            const cls = ping < 50 ? 'net-good' : ping < 100 ? 'net-mid' : 'net-bad';
+            return `<div class="net-row">
+                <div class="net-dot ${cls}"></div>
+                <div class="net-label">${r.region}</div>
+                <div class="net-val">${r.avg_ping}ms</div>
+            </div>`;
+        }).join('');
+        document.getElementById('networkPanel').innerHTML = html;
+    } catch {
+        document.getElementById('networkPanel').innerHTML = '<div class="empty-state">No network data — run the capture agent</div>';
+    }
+}
+
+async function loadMeta() {
+    try {
+        const res = await fetch('/api/meta/current');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+        const tierCls = { S: 't-s', A: 't-a', B: 't-b', C: 't-c', D: 't-d' };
+        let html = '';
+        for (const tier of ['S', 'A', 'B', 'C', 'D']) {
+            const runners = d.meta[tier];
+            if (!runners || !runners.length) continue;
+            const names = runners.map(r => `<strong>${r.name}</strong> ${r.win_rate}%`).join(', ');
+            html += `<div class="tier-row">
+                <div class="tier-badge ${tierCls[tier]}">${tier}</div>
+                <div class="tier-runners">${names}</div>
+            </div>`;
+        }
+        document.getElementById('metaPanel').innerHTML = html || '<div class="empty-state">No meta data</div>';
+    } catch {
+        document.getElementById('metaPanel').innerHTML = '<div class="empty-state">Could not load meta</div>';
+    }
+}
+
+async function loadLoadouts() {
+    try {
+        // Get user's most-played runners from recap
+        const recapRes = await fetch(`/api/recap/${encodeURIComponent(userHash)}`);
+        if (!recapRes.ok) throw new Error();
+        const recap = await recapRes.json();
+
+        // Count runners
+        const counts = {};
+        recap.recent_matches.forEach(m => {
+            counts[m.runner_name] = (counts[m.runner_name] || 0) + 1;
+        });
+        const topRunners = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+        if (!topRunners.length) throw new Error();
+
+        // Fetch loadout for each top runner
+        let html = '';
+        for (const [runner] of topRunners) {
+            try {
+                const res = await fetch(`/api/runners/${encodeURIComponent(runner)}/matches`);
+                if (!res.ok) continue;
+
+                // Get loadout recommendation from the runners endpoint
+                const runnerRes = await fetch(`/api/runners/${encodeURIComponent(runner)}`);
+                if (!runnerRes.ok) continue;
+                const rd = await runnerRes.json();
+
+                html += `<div class="loadout-card">
+                    <div class="runner">${rd.name} — ${rd.role}</div>
+                    <div class="weapons">Tier ${rd.tier} | HP: ${rd.base_hp} | Speed: ${rd.base_speed}x</div>
+                    <div class="wr">WR: ${rd.win_rate.toFixed(1)}% | PR: ${rd.pick_rate.toFixed(1)}%</div>
+                </div>`;
+            } catch {}
+        }
+        document.getElementById('loadoutPanel').innerHTML = html || '<div class="empty-state">No loadout data</div>';
+    } catch {
+        document.getElementById('loadoutPanel').innerHTML = '<div class="empty-state">Submit matches to get recommendations</div>';
+    }
+}
+
+async function loadTTK() {
+    try {
+        const res = await fetch('/api/weapons');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        // Filter weapons with damage data and calculate TTK
+        const withTTK = d.weapons
+            .filter(w => w.damage > 0 && w.fire_rate > 0)
+            .map(w => {
+                const stk = Math.ceil(100 / w.damage);
+                const timeBetween = 60 / w.fire_rate;
+                const ttk = (stk - 1) * timeBetween * 1000;
+                return { ...w, stk, ttk };
+            })
+            .sort((a, b) => a.ttk - b.ttk)
+            .slice(0, 8);
+
+        if (!withTTK.length) throw new Error();
+
+        const html = withTTK.map(w => `
+            <div class="ttk-row">
+                <div class="ttk-name">${w.name}</div>
+                <div class="ttk-val">${w.ttk.toFixed(0)}ms</div>
+                <div class="ttk-shots">${w.stk} shots</div>
+            </div>
+        `).join('');
+        document.getElementById('ttkPanel').innerHTML = html;
+    } catch {
+        document.getElementById('ttkPanel').innerHTML = '<div class="empty-state">No weapon data with stats</div>';
+    }
+}
+
+async function loadServerStatus() {
+    try {
+        const res = await fetch('/api/server-status');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const html = d.status.map(s => {
+            const dot = s.is_up ? 'net-good' : 'net-bad';
+            const label = s.name;
+            const ms = s.response_ms.toFixed(0);
+            return `<div class="net-row" style="min-width:200px;">
+                <div class="net-dot ${dot}"></div>
+                <div class="net-label">${label}</div>
+                <div class="net-val">${s.is_up ? ms + 'ms' : 'DOWN'}</div>
+            </div>`;
+        }).join('');
+        document.getElementById('serverStatus').innerHTML = html;
+    } catch {
+        document.getElementById('serverStatus').innerHTML = '<div class="empty-state">Could not check servers</div>';
+    }
+}
+
+function timeAgo(dateStr) {
+    const now = new Date();
+    const then = new Date(dateStr);
+    const diff = Math.floor((now - then) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+}
+
+// Auto-login if hash is saved
+if (userHash) {
+    showDashboard();
+}
+</script>
+</body>
+</html>
