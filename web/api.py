@@ -979,6 +979,79 @@ def create_app(bot) -> FastAPI:
         result.sort(key=lambda s: -s["player_count"])
         return {"active_servers": result}
 
+    # -- Shareable Report --
+    @app.get("/api/report/{user_hash}")
+    async def user_report(user_hash: str):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+
+        # Latest sessions
+        sessions = await pool.fetch(
+            "SELECT * FROM match_sessions WHERE user_hash = $1 ORDER BY started_at DESC LIMIT 10",
+            user_hash,
+        )
+
+        # Match stats
+        matches = await pool.fetch(
+            "SELECT * FROM matches WHERE user_hash = $1 ORDER BY created_at DESC LIMIT 20",
+            user_hash,
+        )
+
+        # Network data (user's submissions)
+        network = await pool.fetch(
+            "SELECT region, "
+            "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
+            "ROUND(AVG(jitter_ms)::numeric, 1) AS avg_jitter, "
+            "ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss, "
+            "COUNT(*) AS samples "
+            "FROM network_performance WHERE user_hash = $1 "
+            "GROUP BY region ORDER BY avg_ping",
+            user_hash,
+        )
+
+        # Session summary
+        total_duration = sum(s["duration_s"] for s in sessions)
+        total_packets = sum(s["total_packets"] for s in sessions)
+        peak_ping = max((s["peak_ping_ms"] for s in sessions), default=0)
+        regions_played = list(set(s["region"] for s in sessions))
+
+        # Match summary
+        total_matches = len(matches)
+        wins = sum(1 for m in matches if m["result"] == "win")
+        kills = sum(m["kills"] for m in matches)
+        deaths = sum(m["deaths"] for m in matches)
+        damage = sum(m["damage"] for m in matches)
+        runners_used = {}
+        for m in matches:
+            runners_used[m["runner_name"]] = runners_used.get(m["runner_name"], 0) + 1
+        top_runner = max(runners_used, key=runners_used.get) if runners_used else None
+
+        return {
+            "user_hash": user_hash,
+            "sessions": {
+                "count": len(sessions),
+                "total_duration_s": total_duration,
+                "total_packets": total_packets,
+                "peak_ping_ms": peak_ping,
+                "regions": regions_played,
+                "recent": [dict(s) for s in sessions[:5]],
+            },
+            "matches": {
+                "count": total_matches,
+                "wins": wins,
+                "losses": total_matches - wins,
+                "win_rate": round(wins / total_matches * 100, 1) if total_matches > 0 else 0,
+                "kd": round(kills / max(deaths, 1), 2),
+                "total_kills": kills,
+                "total_deaths": deaths,
+                "total_damage": damage,
+                "top_runner": top_runner,
+                "runners_used": runners_used,
+            },
+            "network": [dict(r) for r in network],
+        }
+
     # -- HTML pages served from public/ --
     @app.get("/")
     async def index():
@@ -1025,6 +1098,13 @@ def create_app(bot) -> FastAPI:
     @app.get("/api-tool")
     async def api_tool_page():
         f = PUBLIC_DIR / "api-tool.html"
+        if f.exists():
+            return FileResponse(f)
+        raise HTTPException(404)
+
+    @app.get("/report/{user_hash}")
+    async def report_page(user_hash: str):
+        f = PUBLIC_DIR / "report.html"
         if f.exists():
             return FileResponse(f)
         raise HTTPException(404)

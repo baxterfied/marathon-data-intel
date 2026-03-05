@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marathon Intel Report</title>
+    <meta property="og:title" content="Marathon Intel Report">
+    <meta property="og:description" content="Live network capture data from Marathon">
+    <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+        .report {
+            max-width: 700px; margin: 0 auto; padding: 24px 20px;
+        }
+
+        .header {
+            text-align: center; margin-bottom: 28px; padding-bottom: 20px;
+            border-bottom: 1px solid #00ff8830;
+        }
+        .header h1 {
+            font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem;
+            color: #00ff88; letter-spacing: 5px;
+        }
+        .header .gamertag {
+            font-family: 'Space Mono', monospace; font-size: 1.2rem;
+            color: #fff; margin-top: 4px;
+        }
+        .header .subtitle {
+            font-size: 0.85rem; color: #6b7280; margin-top: 4px;
+        }
+
+        .card {
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+            padding: 16px; margin-bottom: 16px;
+        }
+        .card-title {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem;
+            color: #00ff88; letter-spacing: 2px; margin-bottom: 12px;
+        }
+
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+        }
+        .stat { text-align: center; }
+        .stat .val {
+            font-family: 'Bebas Neue', sans-serif; font-size: 2rem;
+            color: #fff; line-height: 1;
+        }
+        .stat .lbl {
+            font-family: 'Space Mono', monospace; font-size: 0.6rem;
+            color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;
+        }
+        .val-green { color: #00ff88 !important; }
+        .val-yellow { color: #ffcc00 !important; }
+        .val-red { color: #ff4455 !important; }
+
+        .session-row {
+            display: flex; align-items: center; gap: 12px; padding: 8px 0;
+            border-bottom: 1px solid #1e2228; font-size: 0.85rem;
+        }
+        .session-row:last-child { border-bottom: none; }
+        .session-region {
+            background: #1a1d24; border: 1px solid #2a2e38; border-radius: 4px;
+            padding: 2px 8px; font-size: 0.75rem; color: #00ff88;
+            font-family: 'Space Mono', monospace;
+        }
+        .session-server { color: #8b949e; font-family: 'Space Mono', monospace; font-size: 0.8rem; }
+        .session-duration { margin-left: auto; font-family: 'Space Mono', monospace; color: #fff; }
+        .session-packets { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: #6b7280; }
+
+        .net-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .net-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .net-good { background: #00ff88; }
+        .net-mid { background: #ffcc00; }
+        .net-bad { background: #ff4455; }
+        .net-label { font-size: 0.9rem; color: #c0c0c0; }
+        .net-val { font-family: 'Space Mono', monospace; font-size: 0.85rem; color: #fff; margin-left: auto; }
+        .net-detail { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #6b7280; }
+
+        .runner-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .runner-name { font-weight: 600; color: #fff; min-width: 80px; font-size: 0.9rem; }
+        .runner-bar-bg {
+            flex: 1; height: 8px; background: #1e2228; border-radius: 4px; overflow: hidden;
+        }
+        .runner-bar-fill { height: 100%; border-radius: 4px; background: #00ff88; }
+        .runner-count { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #8b949e; min-width: 30px; text-align: right; }
+
+        .share-row {
+            display: flex; gap: 8px; justify-content: center; margin-top: 20px;
+        }
+        .share-btn {
+            background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 16px; color: #8b949e; cursor: pointer; font-size: 0.85rem;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .share-btn:hover { border-color: #00ff88; color: #00ff88; }
+        .share-btn.copied { border-color: #00ff88; color: #00ff88; }
+
+        .footer {
+            text-align: center; margin-top: 24px; padding-top: 16px;
+            border-top: 1px solid #30363d;
+        }
+        .footer a { color: #00ff88; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .footer .powered { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+
+        .loading { text-align: center; padding: 60px 20px; color: #6b7280; }
+        .error { text-align: center; padding: 60px 20px; color: #ff4455; }
+
+        @media (max-width: 500px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat .val { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="report" id="report">
+    <div class="loading" id="loading">Loading report...</div>
+</div>
+
+<script>
+const gamertag = window.location.pathname.split('/report/')[1] || '';
+
+async function loadReport() {
+    if (!gamertag) {
+        document.getElementById('loading').innerHTML = '<div class="error">No gamertag specified</div>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/report/${encodeURIComponent(gamertag)}`);
+        if (!res.ok) throw new Error('No data found');
+        const d = await res.json();
+        render(d);
+    } catch (e) {
+        document.getElementById('loading').innerHTML = `<div class="error">No data found for "${gamertag}"</div>`;
+    }
+}
+
+function render(d) {
+    const s = d.sessions;
+    const m = d.matches;
+    const n = d.network;
+
+    const totalMin = Math.floor(s.total_duration_s / 60);
+    const wrCls = m.win_rate >= 55 ? 'val-green' : m.win_rate >= 45 ? 'val-yellow' : 'val-red';
+    const kdCls = m.kd >= 1.5 ? 'val-green' : m.kd >= 1.0 ? 'val-yellow' : 'val-red';
+
+    let html = `
+    <div class="header">
+        <h1>MARATHON INTEL</h1>
+        <div class="gamertag">${d.user_hash}</div>
+        <div class="subtitle">Capture Report - ${new Date().toLocaleDateString()}</div>
+    </div>`;
+
+    // Session stats
+    html += `<div class="card">
+        <div class="card-title">SESSION DATA</div>
+        <div class="stats-grid">
+            <div class="stat"><div class="val">${s.count}</div><div class="lbl">Sessions</div></div>
+            <div class="stat"><div class="val">${totalMin}m</div><div class="lbl">Play Time</div></div>
+            <div class="stat"><div class="val val-green">${(s.total_packets || 0).toLocaleString()}</div><div class="lbl">Packets</div></div>
+            <div class="stat"><div class="val">${s.peak_ping_ms.toFixed(0)}ms</div><div class="lbl">Peak Ping</div></div>
+        </div>
+    </div>`;
+
+    // Match stats (if any)
+    if (m.count > 0) {
+        html += `<div class="card">
+            <div class="card-title">MATCH STATS</div>
+            <div class="stats-grid">
+                <div class="stat"><div class="val">${m.count}</div><div class="lbl">Matches</div></div>
+                <div class="stat"><div class="val ${wrCls}">${m.win_rate}%</div><div class="lbl">Win Rate</div></div>
+                <div class="stat"><div class="val ${kdCls}">${m.kd}</div><div class="lbl">K/D</div></div>
+                <div class="stat"><div class="val">${m.total_damage.toLocaleString()}</div><div class="lbl">Total Dmg</div></div>
+            </div>
+        </div>`;
+
+        // Runners used
+        if (m.runners_used && Object.keys(m.runners_used).length) {
+            const runners = Object.entries(m.runners_used).sort((a, b) => b[1] - a[1]);
+            const maxCount = runners[0][1];
+            html += `<div class="card">
+                <div class="card-title">RUNNERS PLAYED</div>`;
+            runners.forEach(([name, count]) => {
+                const pct = (count / maxCount * 100).toFixed(0);
+                html += `<div class="runner-bar-row">
+                    <div class="runner-name">${name}</div>
+                    <div class="runner-bar-bg"><div class="runner-bar-fill" style="width:${pct}%"></div></div>
+                    <div class="runner-count">${count}</div>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+    }
+
+    // Recent sessions
+    if (s.recent && s.recent.length) {
+        html += `<div class="card">
+            <div class="card-title">RECENT SESSIONS</div>`;
+        s.recent.forEach(sess => {
+            const dur = Math.floor(sess.duration_s / 60) + ':' + String(sess.duration_s % 60).padStart(2, '0');
+            html += `<div class="session-row">
+                <span class="session-region">${sess.region}</span>
+                <span class="session-server">${sess.server_ip}</span>
+                <span class="session-duration">${dur}</span>
+                <span class="session-packets">${sess.total_packets.toLocaleString()} pkts</span>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Network
+    if (n && n.length) {
+        html += `<div class="card">
+            <div class="card-title">NETWORK BY REGION</div>`;
+        n.forEach(r => {
+            const ping = parseFloat(r.avg_ping);
+            const cls = ping < 50 ? 'net-good' : ping < 100 ? 'net-mid' : 'net-bad';
+            html += `<div class="net-row">
+                <div class="net-dot ${cls}"></div>
+                <div class="net-label">${r.region}</div>
+                <div class="net-val">${r.avg_ping}ms</div>
+                <div class="net-detail">${r.samples} samples | jitter ${r.avg_jitter}ms | loss ${r.avg_loss}%</div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Share buttons
+    html += `<div class="share-row">
+        <button class="share-btn" onclick="copyLink()">Copy Link</button>
+    </div>`;
+
+    // Footer
+    html += `<div class="footer">
+        <a href="/me">Open Dashboard</a> | <a href="/capture">Get Capture Agent</a>
+        <div class="powered">Powered by Marathon Intel - Community network capture</div>
+    </div>`;
+
+    document.getElementById('report').innerHTML = html;
+    document.title = `${d.user_hash} - Marathon Intel Report`;
+}
+
+function copyLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+        const btn = document.querySelector('.share-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy Link'; btn.classList.remove('copied'); }, 2000);
+    });
+}
+
+loadReport();
+</script>
+</body>
+</html>
