@@ -105,4 +105,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("Starting Marathon Data Intel...", flush=True)
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        print(f"FATAL: {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
