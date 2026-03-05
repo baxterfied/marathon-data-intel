@@ -1004,6 +1004,8 @@ def create_app(bot) -> FastAPI:
             "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
             "ROUND(AVG(jitter_ms)::numeric, 1) AS avg_jitter, "
             "ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss, "
+            "ROUND(AVG(tick_rate)::numeric, 0) AS avg_tick_rate, "
+            "ROUND(MAX(tick_rate)::numeric, 0) AS max_tick_rate, "
             "COUNT(*) AS samples "
             "FROM network_performance WHERE user_hash = $1 "
             "GROUP BY region ORDER BY avg_ping",
@@ -1015,6 +1017,13 @@ def create_app(bot) -> FastAPI:
         total_packets = sum(s["total_packets"] for s in sessions)
         peak_ping = max((s["peak_ping_ms"] for s in sessions), default=0)
         regions_played = list(set(s["region"] for s in sessions))
+
+        # Best tick rate from network data
+        tick_row = await pool.fetchrow(
+            "SELECT MAX(tick_rate) AS max_tick FROM network_performance WHERE user_hash = $1 AND tick_rate > 0",
+            user_hash,
+        )
+        server_tick_rate = int(tick_row["max_tick"]) if tick_row and tick_row["max_tick"] else 0
 
         # Match summary
         total_matches = len(matches)
@@ -1034,6 +1043,7 @@ def create_app(bot) -> FastAPI:
                 "total_duration_s": total_duration,
                 "total_packets": total_packets,
                 "peak_ping_ms": peak_ping,
+                "server_tick_rate": server_tick_rate,
                 "regions": regions_played,
                 "recent": [dict(s) for s in sessions[:5]],
             },

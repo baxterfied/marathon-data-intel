@@ -167,6 +167,8 @@ function render(d) {
             <div class="stat"><div class="val">${totalMin}m</div><div class="lbl">Play Time</div></div>
             <div class="stat"><div class="val val-green">${(s.total_packets || 0).toLocaleString()}</div><div class="lbl">Packets</div></div>
             <div class="stat"><div class="val">${s.peak_ping_ms.toFixed(0)}ms</div><div class="lbl">Peak Ping</div></div>
+            ${s.server_tick_rate ? `<div class="stat"><div class="val val-green">${s.server_tick_rate}Hz</div><div class="lbl">Tick Rate</div></div>` : ''}
+            <div class="stat"><div class="val">${s.regions.join(', ')}</div><div class="lbl">Regions</div></div>
         </div>
     </div>`;
 
@@ -223,11 +225,12 @@ function render(d) {
         n.forEach(r => {
             const ping = parseFloat(r.avg_ping);
             const cls = ping < 50 ? 'net-good' : ping < 100 ? 'net-mid' : 'net-bad';
+            const tick = r.max_tick_rate ? ` | ${r.max_tick_rate}Hz tick` : '';
             html += `<div class="net-row">
                 <div class="net-dot ${cls}"></div>
                 <div class="net-label">${r.region}</div>
                 <div class="net-val">${r.avg_ping}ms</div>
-                <div class="net-detail">${r.samples} samples | jitter ${r.avg_jitter}ms | loss ${r.avg_loss}%</div>
+                <div class="net-detail">${r.samples} samples | jitter ${r.avg_jitter}ms | loss ${r.avg_loss}%${tick}</div>
             </div>`;
         });
         html += `</div>`;
