@@ -4,25 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API Tool - Marathon Data Intel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
         .header { background: #161b22; border-bottom: 1px solid #00ff8820; padding: 20px; text-align: center; }
-        .header h1 { color: #00ff88; font-size: 1.8rem; }
+        .header h1 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; font-size: 2.2rem; letter-spacing: 4px; }
         .nav { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
-        .nav a { color: #00ff88; text-decoration: none; padding: 6px 12px; border: 1px solid #00ff8840; border-radius: 4px; font-size: 0.85rem; }
+        .nav a { font-family: 'Space Mono', monospace; color: #00ff88; text-decoration: none; padding: 6px 12px; border: 1px solid #00ff8840; border-radius: 4px; font-size: 0.8rem; }
         .nav a:hover { background: #00ff8820; }
         .container { max-width: 900px; margin: 30px auto; padding: 0 20px; }
         .tool { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
-        .tool h3 { color: #00ff88; margin-bottom: 12px; }
+        .tool h3 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; margin-bottom: 12px; font-size: 1.4rem; letter-spacing: 2px; }
         select, input, textarea { background: #0d1117; border: 1px solid #30363d; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; font-family: inherit; width: 100%; margin-bottom: 8px; }
         select { cursor: pointer; }
         button { background: #00ff88; color: #0a0a0f; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         button:hover { background: #00cc6a; }
-        .response { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 16px; margin-top: 12px; white-space: pre-wrap; font-family: 'Fira Code', monospace, monospace; font-size: 0.85rem; max-height: 400px; overflow-y: auto; display: none; }
+        select, input, textarea { font-family: 'Space Mono', monospace; }
+        button { font-family: 'Bebas Neue', sans-serif; font-size: 1rem; letter-spacing: 2px; }
+        .response { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 16px; margin-top: 12px; white-space: pre-wrap; font-family: 'Space Mono', monospace; font-size: 0.8rem; max-height: 400px; overflow-y: auto; display: none; }
         .endpoint-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 20px; }
         .endpoint { background: #21262d; padding: 12px; border-radius: 4px; font-size: 0.85rem; }
-        .method { font-weight: bold; margin-right: 8px; }
+        .method { font-family: 'Space Mono', monospace; font-weight: bold; margin-right: 8px; }
         .get { color: #00ff88; }
         .post { color: #ffcc00; }
         .path { color: #e0e0e0; }
