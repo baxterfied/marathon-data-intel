@@ -47,53 +47,27 @@ if (-not $python) {
     exit 1
 }
 
-# Check/install tshark
-$tshark = $null
-$wiresharkPaths = @(
-    "C:\Program Files\Wireshark",
-    "C:\Program Files (x86)\Wireshark",
-    "$env:ProgramFiles\Wireshark"
-)
-
-# Check PATH first
+# Install scapy (lightweight packet capture — no Wireshark needed)
+Write-Host "[*] Installing scapy (packet capture library)..." -ForegroundColor Yellow
 try {
-    $null = & tshark --version 2>&1
-    $tshark = "tshark"
-    Write-Host "[+] Found tshark in PATH" -ForegroundColor Green
+    & $python -m pip install scapy --quiet 2>&1 | Out-Null
+    Write-Host "[+] scapy installed" -ForegroundColor Green
 } catch {
-    # Check common install locations
-    foreach ($dir in $wiresharkPaths) {
-        $path = Join-Path $dir "tshark.exe"
-        if (Test-Path $path) {
-            $tshark = $path
-            Write-Host "[+] Found tshark at $dir" -ForegroundColor Green
-            break
-        }
-    }
+    Write-Host "[!] Could not install scapy automatically." -ForegroundColor Red
+    Write-Host "    Try manually: pip install scapy" -ForegroundColor Yellow
 }
 
-if (-not $tshark) {
-    Write-Host "[*] tshark not found. Attempting install via winget..." -ForegroundColor Yellow
-    try {
-        winget install --id WiresharkFoundation.Wireshark --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
-        # Check again
-        foreach ($dir in $wiresharkPaths) {
-            $path = Join-Path $dir "tshark.exe"
-            if (Test-Path $path) {
-                $tshark = $path
-                Write-Host "[+] Wireshark installed successfully" -ForegroundColor Green
-                break
-            }
-        }
-    } catch {
-        Write-Host "[!] Could not auto-install Wireshark." -ForegroundColor Red
-    }
-
-    if (-not $tshark) {
-        Write-Host "[!] Please install Wireshark manually from: https://www.wireshark.org/download.html" -ForegroundColor Red
-        Write-Host "    Make sure 'TShark' is checked during installation." -ForegroundColor Yellow
+# Windows needs Npcap for raw packet capture
+$npcapInstalled = Test-Path "C:\Windows\System32\Npcap" -or (Test-Path "C:\Program Files\Npcap")
+if (-not $npcapInstalled) {
+    # Check if WinPcap or Npcap DLLs exist
+    $hasPcap = (Test-Path "C:\Windows\System32\wpcap.dll") -or (Test-Path "C:\Windows\SysWOW64\wpcap.dll")
+    if (-not $hasPcap) {
+        Write-Host "[!] Npcap not detected. scapy needs Npcap for packet capture on Windows." -ForegroundColor Yellow
+        Write-Host "    Download from: https://npcap.com/#download" -ForegroundColor Yellow
+        Write-Host "    Install with 'WinPcap API-compatible Mode' checked." -ForegroundColor Yellow
         Write-Host ""
-        exit 1
+        Write-Host "    If you already have Wireshark installed, Npcap is included." -ForegroundColor Cyan
     }
 }
 

@@ -74,15 +74,19 @@ for /f "delims=" %%v in ('%PYTHON% --version 2^>^&1') do set PYVER=%%v
 echo  [OK] Found %PYVER% (%PYTHON%)
 
 :: ---------------------------------------------------------------------------
-::  Check for tshark
+::  Check for capture backend (scapy or tshark)
 :: ---------------------------------------------------------------------------
 
-set "TSHARK="
+%PYTHON% -c "import scapy" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  [OK] Found scapy (capture backend)
+    goto :backend_found
+)
 
 where tshark >nul 2>&1
 if %errorlevel% equ 0 (
-    set "TSHARK=tshark"
-    goto :tshark_found
+    echo  [OK] Found tshark (capture backend)
+    goto :backend_found
 )
 
 :: Check default Wireshark install paths
@@ -90,32 +94,27 @@ set "WIRESHARK_PATHS="
 set "WIRESHARK_PATHS=%WIRESHARK_PATHS%;C:\Program Files\Wireshark"
 set "WIRESHARK_PATHS=%WIRESHARK_PATHS%;C:\Program Files (x86)\Wireshark"
 set "WIRESHARK_PATHS=%WIRESHARK_PATHS%;%ProgramFiles%\Wireshark"
-set "WIRESHARK_PATHS=%WIRESHARK_PATHS%;%ProgramFiles(x86)%\Wireshark"
 
 for %%p in (%WIRESHARK_PATHS%) do (
     if exist "%%~p\tshark.exe" (
-        set "TSHARK=%%~p\tshark.exe"
         set "PATH=%%~p;!PATH!"
-        goto :tshark_found
+        echo  [OK] Found tshark at %%~p (capture backend)
+        goto :backend_found
     )
 )
 
 color 0C
-echo  [ERROR] tshark (Wireshark CLI) is not installed.
+echo  [ERROR] No capture backend found.
 echo.
-echo  Install Wireshark (includes tshark):
+echo  Install one of:
 echo.
-echo    Download from: https://www.wireshark.org/download.html
-echo    During installation, make sure "TShark" is checked.
-echo    Default install path: C:\Program Files\Wireshark
-echo.
-echo  If already installed, add the Wireshark folder to your PATH.
+echo    Option 1 (recommended): pip install scapy
+echo    Option 2: Install Wireshark from https://www.wireshark.org/download.html
 echo.
 pause
 exit /b 1
 
-:tshark_found
-echo  [OK] Found tshark: %TSHARK%
+:backend_found
 
 :: ---------------------------------------------------------------------------
 ::  Check that netcapture.py exists

@@ -69,22 +69,30 @@ PYTHON_VERSION=$($PYTHON --version 2>&1)
 ok "Found $PYTHON_VERSION ($PYTHON)"
 
 # ---------------------------------------------------------------------------
-#  Check for tshark
+#  Check for capture backend (scapy or tshark)
 # ---------------------------------------------------------------------------
 
-if command -v tshark &>/dev/null; then
+HAS_BACKEND=false
+
+if $PYTHON -c "import scapy" 2>/dev/null; then
+    ok "Found scapy (capture backend)"
+    HAS_BACKEND=true
+elif command -v tshark &>/dev/null; then
     TSHARK_VERSION=$(tshark --version 2>&1 | head -n1)
-    ok "Found tshark: $TSHARK_VERSION"
-else
-    error "tshark (Wireshark CLI) is not installed."
+    ok "Found tshark: $TSHARK_VERSION (capture backend)"
+    HAS_BACKEND=true
+fi
+
+if [ "$HAS_BACKEND" = false ]; then
+    error "No capture backend found."
     echo ""
-    echo "  Install tshark:"
+    echo "  Install one of:"
     echo ""
-    echo "    Ubuntu/Debian : sudo apt install tshark"
-    echo "    Fedora/RHEL   : sudo dnf install wireshark-cli"
-    echo "    Arch Linux    : sudo pacman -S wireshark-cli"
-    echo "    macOS          : brew install wireshark"
-    echo "    Or visit       : https://www.wireshark.org/download.html"
+    echo "    Option 1 (recommended): pip3 install scapy"
+    echo "    Option 2:"
+    echo "      Ubuntu/Debian : sudo apt install tshark"
+    echo "      Fedora/RHEL   : sudo dnf install wireshark-cli"
+    echo "      macOS          : brew install wireshark"
     echo ""
     exit 1
 fi

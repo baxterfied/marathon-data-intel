@@ -180,14 +180,13 @@
             <p>Open <strong>PowerShell as Administrator</strong> and paste:</p>
             <pre><span class="comment"># Downloads and runs the capture agent</span>
 <span class="cmd">irm https://marathon.straightfirefood.blog/static/install-capture.ps1 | iex</span></pre>
-            <p style="font-size:0.85rem; color:#8b949e; margin-top:8px;">This will install Wireshark (if needed), download the agent, and start capturing. You'll be asked for a username.</p>
+            <p style="font-size:0.85rem; color:#8b949e; margin-top:8px;">This will install scapy (lightweight packet capture), download the agent, and start capturing. No Wireshark needed.</p>
         </div>
 
         <div class="card">
-            <h3><span class="badge badge-mac">macOS</span> <span class="badge badge-linux">Linux</span> One-Line Install</h3>
-            <pre><span class="comment"># Install tshark first</span>
-<span class="cmd">brew install wireshark</span>  <span class="comment"># macOS</span>
-<span class="cmd">sudo apt install tshark</span>  <span class="comment"># Ubuntu/Debian</span>
+            <h3><span class="badge badge-mac">macOS</span> <span class="badge badge-linux">Linux</span> Quick Setup</h3>
+            <pre><span class="comment"># Install scapy (that's it — no Wireshark needed)</span>
+<span class="cmd">pip3 install scapy</span>
 
 <span class="comment"># Download and run</span>
 <span class="cmd">curl -sL https://marathon.straightfirefood.blog/static/netcapture.py -o netcapture.py
@@ -198,16 +197,15 @@ sudo python3 netcapture.py --user-hash YOUR_NAME</span></pre>
 
         <ol class="steps">
             <li>
-                <strong>Install Wireshark / tshark</strong><br>
-                <span class="badge badge-win">Windows</span> Download from <code>wireshark.org</code> &mdash; make sure to check "Install TShark" during setup<br>
-                <span class="badge badge-mac">macOS</span> <code>brew install wireshark</code><br>
-                <span class="badge badge-linux">Linux</span> <code>sudo apt install tshark</code>
-            </li>
-            <li>
                 <strong>Install Python 3.10+</strong><br>
                 <span class="badge badge-win">Windows</span> <code>python.org/downloads</code> &mdash; check "Add to PATH"<br>
                 <span class="badge badge-mac">macOS</span> <code>brew install python3</code><br>
                 <span class="badge badge-linux">Linux</span> Usually pre-installed. Check: <code>python3 --version</code>
+            </li>
+            <li>
+                <strong>Install scapy</strong> (lightweight packet capture library)<br>
+                <code>pip install scapy</code><br>
+                <span style="font-size:0.85rem; color:#8b949e;">Alternative: Install Wireshark/tshark instead &mdash; the agent supports both backends.</span>
             </li>
             <li>
                 <strong>Download the agent</strong><br>
@@ -248,11 +246,11 @@ sudo python3 netcapture.py --user-hash YOUR_NAME</span></pre>
             </details>
             <details>
                 <summary>Will this affect my game performance?</summary>
-                <div class="answer">No. The agent passively reads packets that your system is already processing. It uses minimal CPU and memory. TShark is the industry-standard tool used by network engineers worldwide.</div>
+                <div class="answer">No. The agent passively reads packets that your system is already processing. It uses minimal CPU and memory.</div>
             </details>
             <details>
                 <summary>What ports does it listen on?</summary>
-                <div class="answer">UDP ports 63006-63059 (Marathon game traffic) plus auxiliary ports 53932, 55575, and 57787. It only captures packets on these specific ports.</div>
+                <div class="answer">UDP ports 27015-27200 (Steam Datagram Relay used by Marathon) plus auxiliary ports. It only captures packets on these specific ports.</div>
             </details>
             <details>
                 <summary>How does match detection work?</summary>
