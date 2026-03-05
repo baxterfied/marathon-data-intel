@@ -15,8 +15,7 @@ TRIGGER_WORDS = [
     "best ", "worst ", "meta ", "tier ", "runner ", "loadout ", "map ",
     "patch ", "nerf ", "buff ", "counter ", "match ", "stats ", "good",
     "bad ", "viable ", "broken ", "op ", "weak ", "strong ",
-    "locus", "glitch", "viper", "iron", "specter", "nova",
-    "blaze", "drift", "echo", "titan", "wraith", "sage",
+    "assassin", "vandal", "destroyer", "recon", "rook", "thief", "triage",
 ]
 
 

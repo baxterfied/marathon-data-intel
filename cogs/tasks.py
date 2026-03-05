@@ -17,11 +17,13 @@ class BackgroundTasks(commands.Cog):
 
     async def cog_load(self) -> None:
         self.refresh_stats.start()
+        self.recalc_runner_stats.start()
         self.daily_meta_report.start()
         self.weekly_leaderboard.start()
 
     async def cog_unload(self) -> None:
         self.refresh_stats.cancel()
+        self.recalc_runner_stats.cancel()
         self.daily_meta_report.cancel()
         self.weekly_leaderboard.cancel()
 
@@ -51,6 +53,67 @@ class BackgroundTasks(commands.Cog):
 
     @refresh_stats.before_loop
     async def before_refresh(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(hours=3)
+    async def recalc_runner_stats(self) -> None:
+        """Recalculate runner win_rate and pick_rate from actual match data."""
+        pool = self._pool()
+        if not pool:
+            return
+
+        try:
+            total_matches = await pool.fetchval("SELECT COUNT(*) FROM matches")
+            if not total_matches or total_matches == 0:
+                return
+
+            # Update each runner's stats from match data
+            await pool.execute("""
+                UPDATE runners r SET
+                    win_rate = COALESCE(s.wr, 0),
+                    pick_rate = COALESCE(s.pr, 0),
+                    updated_at = now()
+                FROM (
+                    SELECT
+                        UPPER(runner_name) AS rname,
+                        ROUND(
+                            COUNT(*) FILTER (WHERE result = 'win')::numeric
+                            / GREATEST(COUNT(*), 1) * 100, 1
+                        ) AS wr,
+                        ROUND(COUNT(*)::numeric / $1 * 100, 1) AS pr
+                    FROM matches
+                    GROUP BY UPPER(runner_name)
+                ) s
+                WHERE UPPER(r.name) = s.rname
+            """, total_matches)
+
+            # Also recalc weapon stats if we have loadout data
+            await pool.execute("""
+                UPDATE weapons w SET
+                    win_rate = COALESCE(s.wr, 0),
+                    pick_rate = COALESCE(s.pr, 0),
+                    updated_at = now()
+                FROM (
+                    SELECT
+                        loadout->>'primary' AS wname,
+                        ROUND(
+                            COUNT(*) FILTER (WHERE result = 'win')::numeric
+                            / GREATEST(COUNT(*), 1) * 100, 1
+                        ) AS wr,
+                        ROUND(COUNT(*)::numeric / $1 * 100, 1) AS pr
+                    FROM matches
+                    WHERE loadout->>'primary' IS NOT NULL
+                    GROUP BY loadout->>'primary'
+                ) s
+                WHERE UPPER(w.name) = UPPER(s.wname)
+            """, total_matches)
+
+            log.info("Runner and weapon stats recalculated from %d matches", total_matches)
+        except Exception as exc:
+            log.error("Runner stats recalc failed: %s", exc)
+
+    @recalc_runner_stats.before_loop
+    async def before_recalc(self) -> None:
         await self.bot.wait_until_ready()
 
     @tasks.loop(hours=24)

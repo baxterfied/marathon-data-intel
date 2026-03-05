@@ -67,13 +67,14 @@ async def on_ready() -> None:
 
 # -- Entrypoint --
 async def main() -> None:
-    from services import connect_db, close_db, connect_redis, close_redis, connect_ai, close_ai
+    from services import connect_db, close_db, connect_redis, close_redis, connect_ai, close_ai, connect_bungie, close_bungie
     from web.api import create_app
 
     async with bot:
         bot.pool = await connect_db()
         bot.redis = await connect_redis()
         bot.ai_client = await connect_ai()
+        bot.bungie = await connect_bungie()
 
         await load_cogs()
 
@@ -97,6 +98,7 @@ async def main() -> None:
                 server.serve(),
             )
         finally:
+            await close_bungie(bot.bungie)
             await close_ai(bot.ai_client)
             await close_db(bot.pool)
             await close_redis(bot.redis)

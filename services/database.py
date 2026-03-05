@@ -44,12 +44,15 @@ CREATE TABLE IF NOT EXISTS matches (
     duration_s  INT         NOT NULL DEFAULT 0,
     loadout     JSONB       NOT NULL DEFAULT '{}'::jsonb,
     patch       TEXT        NOT NULL DEFAULT '1.0',
+    activity_id TEXT,
+    source      TEXT        NOT NULL DEFAULT 'manual',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_matches_user ON matches (user_hash, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_runner ON matches (runner_name, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_map ON matches (map_name);
 CREATE INDEX IF NOT EXISTS idx_matches_patch ON matches (patch);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_activity ON matches (activity_id) WHERE activity_id IS NOT NULL;
 
 -- network_performance
 CREATE TABLE IF NOT EXISTS network_performance (
@@ -127,6 +130,74 @@ CREATE TABLE IF NOT EXISTS ai_insights (
 );
 CREATE INDEX IF NOT EXISTS idx_insights_type ON ai_insights (insight_type, created_at DESC);
 
+-- weapons
+CREATE TABLE IF NOT EXISTS weapons (
+    id          SERIAL      PRIMARY KEY,
+    name        TEXT        NOT NULL UNIQUE,
+    category    TEXT        NOT NULL DEFAULT 'unknown',
+    damage      FLOAT       NOT NULL DEFAULT 0,
+    fire_rate   FLOAT       NOT NULL DEFAULT 0,
+    mag_size    INT         NOT NULL DEFAULT 0,
+    reload_s    FLOAT       NOT NULL DEFAULT 0,
+    range_m     FLOAT       NOT NULL DEFAULT 0,
+    pick_rate   FLOAT       NOT NULL DEFAULT 0.0,
+    win_rate    FLOAT       NOT NULL DEFAULT 0.0,
+    patch       TEXT        NOT NULL DEFAULT '1.0',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_weapons_name ON weapons (name);
+CREATE INDEX IF NOT EXISTS idx_weapons_category ON weapons (category);
+
+-- seed weapons (real Marathon arsenal)
+INSERT INTO weapons (name, category) VALUES
+    ('Impact HAR', 'assault_rifle'),
+    ('M77 Assault Rifle', 'assault_rifle'),
+    ('Overrun AR', 'assault_rifle'),
+    ('V75 Scar', 'assault_rifle'),
+    ('Conquest LMG', 'machine_gun'),
+    ('Demolition HMG', 'machine_gun'),
+    ('Retaliator LMG', 'machine_gun'),
+    ('V11 Punch', 'melee'),
+    ('CE Tactical Sidearm', 'pistol'),
+    ('Magnum MC', 'pistol'),
+    ('BR33 Volley Rifle', 'precision_rifle'),
+    ('Hardline PR', 'precision_rifle'),
+    ('Repeater HPR', 'precision_rifle'),
+    ('Stryder M1T', 'precision_rifle'),
+    ('Twin Tap HBR', 'precision_rifle'),
+    ('V66 Lookout', 'precision_rifle'),
+    ('V95 Lookout', 'precision_rifle'),
+    ('Ares RG', 'railgun'),
+    ('V00 Zeus RG', 'railgun'),
+    ('Misriah 2442', 'shotgun'),
+    ('V85 Circuit Breaker', 'shotgun'),
+    ('WSTR Combat Shotgun', 'shotgun'),
+    ('Longshot', 'sniper_rifle'),
+    ('Outland', 'sniper_rifle'),
+    ('V99 Channel Rifle', 'sniper_rifle'),
+    ('BRRT SMG', 'smg'),
+    ('Bully SMG', 'smg'),
+    ('Copperhead RF', 'smg'),
+    ('V22 Volt Thrower', 'smg')
+ON CONFLICT (name) DO NOTHING;
+
+-- tracked_players (for Bungie API auto-sync)
+CREATE TABLE IF NOT EXISTS tracked_players (
+    id              SERIAL      PRIMARY KEY,
+    membership_id   TEXT        NOT NULL,
+    membership_type INT         NOT NULL,
+    display_name    TEXT        NOT NULL DEFAULT '',
+    bungie_name     TEXT        NOT NULL DEFAULT '',
+    last_synced_at  TIMESTAMPTZ,
+    last_activity_id TEXT,
+    auto_sync       BOOLEAN     NOT NULL DEFAULT true,
+    added_by        TEXT        NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (membership_id, membership_type)
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_sync ON tracked_players (auto_sync, last_synced_at);
+
 -- materialized view: community stats
 CREATE OR REPLACE VIEW community_stats_view AS
 SELECT
@@ -141,20 +212,15 @@ SELECT
     ROUND(AVG(duration_s)::numeric, 0) AS avg_duration_s
 FROM matches;
 
--- seed runners
+-- seed runners (real Marathon roster)
 INSERT INTO runners (name, role, base_hp, base_speed, tier, abilities) VALUES
-    ('LOCUS', 'recon', 100, 1.2, 'S', '["Pulse Scan", "Tracker Dart", "Recon Surge"]'::jsonb),
-    ('GLITCH', 'assault', 110, 1.0, 'A', '["System Hack", "EMP Burst", "Digital Ghost"]'::jsonb),
-    ('VIPER', 'assault', 100, 1.1, 'A', '["Toxic Cloud", "Acid Spray", "Venomstrike"]'::jsonb),
-    ('IRON', 'tank', 150, 0.8, 'B', '["Shield Wall", "Fortify", "Ground Pound"]'::jsonb),
-    ('SPECTER', 'stealth', 90, 1.3, 'S', '["Cloak", "Shadow Step", "Phantom Strike"]'::jsonb),
-    ('NOVA', 'support', 100, 1.0, 'A', '["Heal Pulse", "Shield Boost", "Revive Field"]'::jsonb),
-    ('BLAZE', 'assault', 105, 1.1, 'B', '["Incendiary", "Fire Wall", "Inferno"]'::jsonb),
-    ('DRIFT', 'recon', 95, 1.4, 'A', '["Grapple", "Jet Dash", "Aerial Scan"]'::jsonb),
-    ('ECHO', 'support', 100, 1.0, 'C', '["Sound Wave", "Sonic Shield", "Resonance"]'::jsonb),
-    ('TITAN', 'tank', 160, 0.7, 'B', '["Barrier", "Charge", "Seismic Slam"]'::jsonb),
-    ('WRAITH', 'stealth', 85, 1.3, 'S', '["Phase Shift", "Void Walk", "Rift Strike"]'::jsonb),
-    ('SAGE', 'support', 100, 1.0, 'A', '["Mend", "Barrier Orb", "Resurrection"]'::jsonb)
+    ('ASSASSIN', 'stealth', 90, 1.3, 'A', '["Shadow Strike"]'::jsonb),
+    ('DESTROYER', 'tank', 140, 0.85, 'A', '["Heavy Ordnance"]'::jsonb),
+    ('RECON', 'recon', 100, 1.1, 'A', '["Tactical Scan"]'::jsonb),
+    ('ROOK', 'opportunist', 100, 1.0, 'B', '["Wildcard"]'::jsonb),
+    ('THIEF', 'stealth', 85, 1.3, 'B', '["Covert Acquisitions"]'::jsonb),
+    ('TRIAGE', 'support', 100, 1.0, 'A', '["Field Medic"]'::jsonb),
+    ('VANDAL', 'assault', 110, 1.05, 'A', '["Combat Anarchy"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
 """
 

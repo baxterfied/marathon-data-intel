@@ -1,5 +1,6 @@
 """FastAPI routes — all API endpoints for Marathon Intel."""
 
+import json
 import logging
 from typing import Optional
 
@@ -158,7 +159,7 @@ def create_app(bot) -> FastAPI:
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)",
             match.user_hash, match.runner_name, match.map_name, match.mode, match.result,
             match.kills, match.deaths, match.assists, match.damage, match.duration_s,
-            str(match.loadout).replace("'", '"') if match.loadout else "{}",
+            json.dumps(match.loadout) if match.loadout else "{}",
             match.patch,
         )
         await invalidate_match_caches(_redis())
@@ -238,7 +239,6 @@ def create_app(bot) -> FastAPI:
         pool = _pool()
         if not pool:
             raise HTTPException(503, "Database offline")
-        import json
         await pool.execute(
             "INSERT INTO patch_notes (version, title, summary, changes) VALUES ($1, $2, $3, $4::jsonb) "
             "ON CONFLICT (version) DO UPDATE SET title = $2, summary = $3, changes = $4::jsonb",
@@ -307,6 +307,69 @@ def create_app(bot) -> FastAPI:
             "total_deaths": deaths,
             "recent_matches": [dict(r) for r in rows],
         }
+
+    # -- Weapons --
+    @app.get("/api/weapons")
+    async def list_weapons(category: str = ""):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        if category:
+            rows = await pool.fetch("SELECT * FROM weapons WHERE category = $1 ORDER BY name", category)
+        else:
+            rows = await pool.fetch("SELECT * FROM weapons ORDER BY category, name")
+        return {"weapons": [dict(r) for r in rows]}
+
+    @app.get("/api/weapons/{name}")
+    async def get_weapon(name: str):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        row = await pool.fetchrow("SELECT * FROM weapons WHERE UPPER(name) = UPPER($1)", name)
+        if not row:
+            raise HTTPException(404, "Weapon not found")
+        return dict(row)
+
+    # -- Tracked Players --
+    @app.get("/api/tracked")
+    async def list_tracked():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT display_name, bungie_name, auto_sync, last_synced_at, membership_type "
+            "FROM tracked_players ORDER BY display_name"
+        )
+        return {"tracked": [dict(r) for r in rows]}
+
+    # -- Bungie API proxy --
+    @app.get("/api/bungie/search/{name}")
+    async def bungie_search(name: str):
+        bungie = getattr(bot, "bungie", None)
+        if not bungie:
+            raise HTTPException(503, "Bungie API not connected")
+        from services.bungie import BungieAPIError
+        try:
+            data = await bungie.search_players(name)
+        except BungieAPIError as exc:
+            raise HTTPException(502, f"Bungie API error: {exc.message}")
+        return data
+
+    @app.get("/api/bungie/player/{bungie_name}")
+    async def bungie_player(bungie_name: str):
+        bungie = getattr(bot, "bungie", None)
+        if not bungie:
+            raise HTTPException(503, "Bungie API not connected")
+        from services.bungie import BungieAPIError, parse_bungie_name
+        try:
+            display_name, code = parse_bungie_name(bungie_name)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        try:
+            results = await bungie.search_player_exact(display_name, code)
+        except BungieAPIError as exc:
+            raise HTTPException(502, f"Bungie API error: {exc.message}")
+        return {"memberships": results}
 
     # -- HTML pages served from public/ --
     @app.get("/")
