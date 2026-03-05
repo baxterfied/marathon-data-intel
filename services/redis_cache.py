@@ -20,6 +20,7 @@ TTL_HISTORY = 3600            # 1 hour
 TTL_SERVER_STATUS = 120       # 2 min
 TTL_PEAK_HOURS = 1800         # 30 min
 TTL_META_SNAPSHOT = 86400     # 24 hours
+TTL_LIVE_STATUS = 15          # 15 sec — netcapture pushes every few seconds
 
 
 async def connect_redis() -> Optional[aioredis.Redis]:

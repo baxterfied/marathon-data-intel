@@ -65,6 +65,23 @@ class MatchSubmission(BaseModel):
         return v.strip()
 
 
+class LiveStatusUpdate(BaseModel):
+    user_hash: str = Field(..., min_length=1, max_length=100)
+    state: str = "idle"  # idle, queuing, in_match
+    server_ip: str = ""
+    region: str = "unknown"
+    ping_ms: float = 0
+    jitter_ms: float = 0
+    packet_loss: float = 0
+    tick_rate: int = 0
+    match_duration_s: int = 0
+    queue_time_s: int = 0
+    packets_per_sec: float = 0
+    session_matches: int = 0
+    session_wins: int = 0
+    session_losses: int = 0
+
+
 class NetworkSubmission(BaseModel):
     user_hash: str
     server_ip: str = ""
@@ -655,6 +672,105 @@ def create_app(bot) -> FastAPI:
             "SELECT * FROM blog_posts ORDER BY created_at DESC LIMIT $1", limit
         )
         return {"posts": [dict(r) for r in rows]}
+
+    # -- Live Status (netcapture <-> dashboard bridge) --
+    @app.post("/api/live/{user_hash}")
+    async def update_live_status(user_hash: str, status: LiveStatusUpdate, request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        if not _check_rate_limit(client_ip, is_write=True):
+            raise HTTPException(429, "Rate limited.")
+        redis = _redis()
+        if redis:
+            await cache_set(redis, f"marathon:live:{user_hash}", {
+                "state": status.state,
+                "server_ip": status.server_ip,
+                "region": status.region,
+                "ping_ms": status.ping_ms,
+                "jitter_ms": status.jitter_ms,
+                "packet_loss": status.packet_loss,
+                "tick_rate": status.tick_rate,
+                "match_duration_s": status.match_duration_s,
+                "queue_time_s": status.queue_time_s,
+                "packets_per_sec": status.packets_per_sec,
+                "session_matches": status.session_matches,
+                "session_wins": status.session_wins,
+                "session_losses": status.session_losses,
+            }, 15)
+        return {"status": "ok"}
+
+    @app.get("/api/live/{user_hash}")
+    async def get_live_status(user_hash: str):
+        redis = _redis()
+        data = await cache_get(redis, f"marathon:live:{user_hash}")
+        if not data:
+            return {"state": "offline", "active": False}
+
+        # Enrich with contextual tips based on region and state
+        tips = []
+        pool = _pool()
+        region = data.get("region", "unknown")
+
+        if data.get("state") == "in_match" and pool:
+            # Get region-specific best runners
+            try:
+                top_runners = await pool.fetch(
+                    "SELECT runner_name, "
+                    "COUNT(*) FILTER (WHERE result = 'win') AS wins, "
+                    "COUNT(*) AS total, "
+                    "ROUND(COUNT(*) FILTER (WHERE result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS wr "
+                    "FROM matches GROUP BY runner_name HAVING COUNT(*) >= 3 "
+                    "ORDER BY wr DESC LIMIT 3"
+                )
+                if top_runners:
+                    names = ", ".join(f"{r['runner_name']} ({r['wr']}%)" for r in top_runners)
+                    tips.append(f"Top runners right now: {names}")
+            except Exception:
+                pass
+
+            # Ping quality tip
+            ping = data.get("ping_ms", 0)
+            if ping > 100:
+                tips.append("High ping detected — avoid twitch-aim runners like ASSASSIN")
+            elif ping < 40:
+                tips.append("Low ping — great for precision runners like RECON")
+
+            # Packet loss warning
+            loss = data.get("packet_loss", 0)
+            if loss > 2:
+                tips.append(f"Packet loss at {loss}% — expect rubber banding")
+
+            # Server reputation
+            server_ip = data.get("server_ip", "")
+            if server_ip and pool:
+                try:
+                    bad_server = await pool.fetchrow(
+                        "SELECT ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss, COUNT(*) AS reports "
+                        "FROM network_performance WHERE server_ip = $1 "
+                        "GROUP BY server_ip "
+                        "HAVING COUNT(*) >= 3 AND AVG(packet_loss) > 1",
+                        server_ip,
+                    )
+                    if bad_server:
+                        tips.append(f"This server has {bad_server['reports']} community reports of issues")
+                except Exception:
+                    pass
+
+        elif data.get("state") == "queuing":
+            tips.append("In queue — good time to check your loadout")
+
+        # Session tilt detection
+        session_matches = data.get("session_matches", 0)
+        session_losses = data.get("session_losses", 0)
+        if session_matches >= 3:
+            loss_rate = session_losses / session_matches * 100
+            if loss_rate >= 60:
+                tips.append("Rough session — consider switching runners or taking a break")
+            elif loss_rate <= 30:
+                tips.append("You're on fire — keep the momentum going")
+
+        data["active"] = True
+        data["tips"] = tips
+        return data
 
     # -- Map Stats --
     @app.get("/api/maps")

@@ -324,6 +324,34 @@ async def submit_stats(api_url: str, payload: dict) -> bool:
     return False
 
 
+async def push_live_status(api_url: str, user_hash: str, status: dict) -> None:
+    """Push live status to the API for the companion dashboard."""
+    if not api_url:
+        return
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{api_url}/api/live/{user_hash}",
+                json={"user_hash": user_hash, **status},
+            )
+    except ImportError:
+        import urllib.request
+        data = json.dumps({"user_hash": user_hash, **status}).encode()
+        req = urllib.request.Request(
+            f"{api_url}/api/live/{user_hash}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 async def submit_session(api_url: str, payload: dict) -> bool:
     """Submit a match session to the Marathon Intel API."""
     if not api_url:
@@ -399,6 +427,11 @@ async def run_capture(
     pps_counters: dict[str, int] = defaultdict(int)
     last_pps_check = time.time()
     last_submit = time.time()
+    last_live_push = 0.0
+    LIVE_PUSH_INTERVAL = 5  # Push live status every 5 seconds
+    session_matches = 0
+    session_wins = 0
+    session_losses = 0
     local_ips = _get_local_ips()
 
     log.info("Local IPs: %s", ", ".join(local_ips))
@@ -496,6 +529,7 @@ async def run_capture(
                                         ip, session.duration_s, session.queue_time_s,
                                         session.total_packets, region,
                                     )
+                                    session_matches += 1
                                     # Submit session
                                     payload = session.to_session_dict(user_hash, region=region, patch=patch)
                                     if api_url:
@@ -515,6 +549,42 @@ async def run_capture(
 
                 pps_counters.clear()
                 last_pps_check = now
+
+            # Push live status to API every 5 seconds
+            if api_url and now - last_live_push >= LIVE_PUSH_INTERVAL:
+                # Find the most active session for status
+                active_session = None
+                active_server = None
+                for ip, session in match_sessions.items():
+                    if session.state != MatchState.IDLE:
+                        active_session = session
+                        active_server = servers.get(ip)
+                        break
+                if not active_session:
+                    # Use the most recently seen server
+                    for ip, srv in sorted(servers.items(), key=lambda x: x[1].last_seen, reverse=True):
+                        if srv.packet_count > 0:
+                            active_session = match_sessions.get(ip, MatchSession(server_ip=ip))
+                            active_server = srv
+                            break
+
+                live_state = {
+                    "state": active_session.state.value if active_session else "idle",
+                    "server_ip": active_session.server_ip if active_session else "",
+                    "region": guess_region(active_session.server_ip) if active_session else "unknown",
+                    "ping_ms": active_server.avg_ping_ms if active_server else 0,
+                    "jitter_ms": active_server.jitter_ms if active_server else 0,
+                    "packet_loss": active_server.packet_loss_pct if active_server else 0,
+                    "tick_rate": active_server.tick_rate if active_server else 0,
+                    "match_duration_s": int(now - active_session.match_start) if active_session and active_session.match_start and active_session.state == MatchState.IN_MATCH else 0,
+                    "queue_time_s": int(now - active_session.queue_start) if active_session and active_session.queue_start and active_session.state == MatchState.QUEUING else 0,
+                    "packets_per_sec": active_session.avg_recent_pps if active_session else 0,
+                    "session_matches": session_matches,
+                    "session_wins": session_wins,
+                    "session_losses": session_losses,
+                }
+                asyncio.ensure_future(push_live_status(api_url, user_hash, live_state))
+                last_live_push = now
 
             # Submit network stats periodically
             if now - last_submit >= SUBMIT_INTERVAL:

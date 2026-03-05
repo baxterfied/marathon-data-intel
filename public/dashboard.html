@@ -143,6 +143,33 @@
         .ttk-val { font-family: 'Space Mono', monospace; color: #00ff88; }
         .ttk-shots { font-family: 'Space Mono', monospace; color: #8b949e; font-size: 0.75rem; }
 
+        /* Live panel */
+        .live-panel { border-color: #00ff8850; position: relative; overflow: hidden; }
+        .live-panel.active { border-color: #00ff88; box-shadow: 0 0 20px #00ff8820; }
+        .live-panel.offline { border-color: #30363d; opacity: 0.7; }
+        .live-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-family: 'Space Mono', monospace; font-size: 0.7rem; font-weight: 700;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .live-badge.idle { background: #30363d; color: #8b949e; }
+        .live-badge.queuing { background: #ffcc0030; color: #ffcc00; border: 1px solid #ffcc0050; }
+        .live-badge.in_match { background: #00ff8830; color: #00ff88; border: 1px solid #00ff8850; animation: pulse 1.5s infinite; }
+        .live-badge.offline { background: #1a1a2e; color: #6b7280; }
+        .live-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+        .live-metric { text-align: center; }
+        .live-metric .val { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; color: #fff; line-height: 1; }
+        .live-metric .lbl { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+        .live-tips { margin-top: 12px; }
+        .live-tip {
+            background: #1a1d24; border-left: 3px solid #00ff88; padding: 6px 10px;
+            margin-bottom: 6px; font-size: 0.82rem; color: #c0c0c0; border-radius: 0 4px 4px 0;
+        }
+        .live-tip.warn { border-left-color: #ffcc00; }
+        .live-tip.alert { border-left-color: #ff4455; }
+        .live-offline-msg { color: #6b7280; font-size: 0.85rem; padding: 12px 0; text-align: center; }
+        @media (max-width: 600px) { .live-grid { grid-template-columns: repeat(2, 1fr); } }
+
         .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
 
         @media (max-width: 900px) {
@@ -185,6 +212,17 @@
     </div>
 
     <div class="grid">
+        <!-- LIVE Status -->
+        <div class="panel grid-full live-panel offline" id="livePanel">
+            <div class="panel-header">
+                <span class="icon">&#9889;</span> LIVE STATUS
+                <span class="live-badge offline" id="liveBadge">OFFLINE</span>
+            </div>
+            <div id="liveContent">
+                <div class="live-offline-msg">Run the capture agent to see live match data here</div>
+            </div>
+        </div>
+
         <!-- Session Overview -->
         <div class="panel grid-full">
             <div class="panel-header"><span class="icon">&#9889;</span> Session Overview</div>
@@ -242,6 +280,7 @@
 <script>
 let userHash = localStorage.getItem('marathon_hash') || '';
 let refreshTimer = null;
+let liveTimer = null;
 
 function enterDashboard() {
     const input = document.getElementById('loginHash').value.trim();
@@ -264,8 +303,11 @@ function showDashboard() {
     document.getElementById('dashboard').style.display = 'block';
     document.getElementById('displayHash').textContent = userHash;
     refreshAll();
+    loadLive();
     if (refreshTimer) clearInterval(refreshTimer);
+    if (liveTimer) clearInterval(liveTimer);
     refreshTimer = setInterval(refreshAll, 30000);
+    liveTimer = setInterval(loadLive, 5000);
 }
 
 document.getElementById('loginHash').addEventListener('keydown', e => {
@@ -491,6 +533,71 @@ async function loadServerStatus() {
         document.getElementById('serverStatus').innerHTML = html;
     } catch {
         document.getElementById('serverStatus').innerHTML = '<div class="empty-state">Could not check servers</div>';
+    }
+}
+
+async function loadLive() {
+    try {
+        const res = await fetch(`/api/live/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const panel = document.getElementById('livePanel');
+        const badge = document.getElementById('liveBadge');
+        const content = document.getElementById('liveContent');
+
+        if (!d.active) {
+            panel.className = 'panel grid-full live-panel offline';
+            badge.className = 'live-badge offline';
+            badge.textContent = 'OFFLINE';
+            content.innerHTML = '<div class="live-offline-msg">Run the capture agent to see live match data here</div>';
+            return;
+        }
+
+        const state = d.state || 'idle';
+        panel.className = 'panel grid-full live-panel active';
+        badge.className = 'live-badge ' + state;
+        badge.textContent = state === 'in_match' ? 'IN MATCH' : state === 'queuing' ? 'IN QUEUE' : 'IDLE';
+
+        const ping = d.ping_ms || 0;
+        const pingCls = ping < 50 ? 'val-green' : ping < 100 ? 'val-yellow' : 'val-red';
+        const loss = d.packet_loss || 0;
+        const lossCls = loss < 1 ? 'val-green' : loss < 3 ? 'val-yellow' : 'val-red';
+
+        let duration = '';
+        if (state === 'in_match' && d.match_duration_s) {
+            const m = Math.floor(d.match_duration_s / 60);
+            const s = d.match_duration_s % 60;
+            duration = m + ':' + String(s).padStart(2, '0');
+        } else if (state === 'queuing' && d.queue_time_s) {
+            duration = d.queue_time_s + 's';
+        } else {
+            duration = '--';
+        }
+
+        let html = `<div class="live-grid">
+            <div class="live-metric"><div class="val ${pingCls}">${ping.toFixed(0)}</div><div class="lbl">Ping (ms)</div></div>
+            <div class="live-metric"><div class="val">${(d.jitter_ms || 0).toFixed(1)}</div><div class="lbl">Jitter (ms)</div></div>
+            <div class="live-metric"><div class="val ${lossCls}">${loss.toFixed(1)}%</div><div class="lbl">Pkt Loss</div></div>
+            <div class="live-metric"><div class="val">${duration}</div><div class="lbl">${state === 'queuing' ? 'Queue Time' : 'Duration'}</div></div>
+        </div>`;
+
+        if (d.region && d.region !== 'unknown') {
+            html += `<div style="margin-top:8px; font-size:0.8rem; color:#8b949e;">Server: ${d.region} | ${d.server_ip || 'detecting...'} | ${d.tick_rate || '?'}Hz | ${(d.packets_per_sec || 0).toFixed(0)} pps</div>`;
+        }
+
+        if (d.tips && d.tips.length) {
+            html += '<div class="live-tips">';
+            d.tips.forEach(tip => {
+                const cls = tip.includes('loss') || tip.includes('rubber') ? 'alert' : tip.includes('Rough') ? 'warn' : '';
+                html += `<div class="live-tip ${cls}">${tip}</div>`;
+            });
+            html += '</div>';
+        }
+
+        content.innerHTML = html;
+    } catch {
+        // Silently fail — panel stays in last state
     }
 }
 
