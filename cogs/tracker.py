@@ -309,7 +309,7 @@ class Tracker(commands.Cog):
     # -- /streaks --
     @app_commands.command(name="streaks", description="Win/loss streak analysis")
     @app_commands.guilds(GUILD)
-    @app_commands.describe(user_hash="Your anonymous user hash")
+    @app_commands.describe(user_hash="Your gamertag")
     async def streaks(self, interaction: discord.Interaction, user_hash: str) -> None:
         await interaction.response.defer(ephemeral=True)
         pool = self._pool()
@@ -768,7 +768,7 @@ class Tracker(commands.Cog):
             embed.add_field(name="Primary", value=primary_weapon, inline=True)
         if secondary_weapon:
             embed.add_field(name="Secondary", value=secondary_weapon, inline=True)
-        embed.set_footer(text=f"Recorded for user {user_hash}")
+        embed.set_footer(text=f"Recorded for {user_hash}")
 
         await interaction.followup.send(embed=embed)
 

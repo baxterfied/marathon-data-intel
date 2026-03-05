@@ -116,10 +116,10 @@ try {
 
 # Get username
 Write-Host ""
-$userHash = Read-Host "Enter your username/hash (used to track your data anonymously)"
+$userHash = Read-Host "Pick a gamertag (e.g. xNightRunner — used to track your stats)"
 if ([string]::IsNullOrWhiteSpace($userHash)) {
     $userHash = "anon_" + (Get-Random -Maximum 99999)
-    Write-Host "[*] Using random hash: $userHash" -ForegroundColor Yellow
+    Write-Host "[*] Using random gamertag: $userHash" -ForegroundColor Yellow
 }
 
 # Create a shortcut launcher
@@ -144,7 +144,7 @@ Write-Host "   SETUP COMPLETE" -ForegroundColor Green
 Write-Host "  ======================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Files installed to: $INSTALL_DIR" -ForegroundColor Cyan
-Write-Host "  Your hash: $userHash" -ForegroundColor Cyan
+Write-Host "  Your gamertag: $userHash" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  To run the agent:" -ForegroundColor White
 Write-Host "    1. Open $launcherPath as Admin" -ForegroundColor White

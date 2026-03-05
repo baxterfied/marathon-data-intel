@@ -239,7 +239,7 @@ class Intel(commands.Cog):
     # -- /recap --
     @app_commands.command(name="recap", description="Your personal last session recap")
     @app_commands.guilds(GUILD)
-    @app_commands.describe(user_hash="Your anonymous user hash")
+    @app_commands.describe(user_hash="Your gamertag")
     async def recap(self, interaction: discord.Interaction, user_hash: str) -> None:
         await interaction.response.defer(ephemeral=True)
         pool = self._pool()
