@@ -170,6 +170,98 @@
         .live-offline-msg { color: #6b7280; font-size: 0.85rem; padding: 12px 0; text-align: center; }
         @media (max-width: 600px) { .live-grid { grid-template-columns: repeat(2, 1fr); } }
 
+        /* Community Live */
+        .community-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+        .community-stat {
+            background: #1a1d24; border: 1px solid #2a2e38; border-radius: 6px;
+            padding: 10px 16px; text-align: center; flex: 1; min-width: 100px;
+        }
+        .community-stat .val {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; color: #fff; line-height: 1;
+        }
+        .community-stat .lbl {
+            font-family: 'Space Mono', monospace; font-size: 0.6rem; color: #8b949e;
+            text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;
+        }
+        .community-regions {
+            font-size: 0.85rem; color: #c0c0c0; margin-bottom: 8px;
+        }
+        .community-regions strong { color: #00ff88; }
+        .community-ping {
+            font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #8b949e;
+        }
+        .community-ping .val { color: #00ff88; font-weight: 700; }
+
+        /* Trending Runners */
+        .trending-row {
+            display: flex; align-items: center; gap: 10px; padding: 7px 0;
+            border-bottom: 1px solid #1e2228; font-size: 0.85rem;
+        }
+        .trending-row:last-child { border-bottom: none; }
+        .trending-rank {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; color: #8b949e;
+            width: 24px; text-align: center; flex-shrink: 0;
+        }
+        .trending-name { font-weight: 600; color: #fff; min-width: 80px; }
+        .trending-picks {
+            font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #c0c0c0;
+        }
+        .trending-wr {
+            font-family: 'Space Mono', monospace; font-size: 0.8rem; margin-left: auto;
+        }
+        .trending-bar-bg {
+            flex: 1; height: 6px; background: #1e2228; border-radius: 3px; overflow: hidden; min-width: 40px;
+        }
+        .trending-bar-fill {
+            height: 100%; border-radius: 3px; background: #00ff88;
+        }
+
+        /* Scout Runner */
+        .scout-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .scout-input-row input {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 12px; color: #e0e0e0; font-size: 0.9rem; flex: 1;
+            font-family: 'Space Mono', monospace;
+        }
+        .scout-input-row input:focus { outline: none; border-color: #00ff88; }
+        .scout-input-row button {
+            background: #00ff88; color: #0a0a0f; border: none; border-radius: 6px;
+            padding: 8px 16px; font-family: 'Bebas Neue', sans-serif; font-size: 1rem;
+            letter-spacing: 2px; cursor: pointer;
+        }
+        .scout-input-row button:hover { background: #00dd77; }
+        .scout-result {
+            background: #1a1d24; border: 1px solid #2a2e38; border-radius: 6px; padding: 12px;
+        }
+        .scout-result-header {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: #00ff88;
+            letter-spacing: 1px; margin-bottom: 8px;
+        }
+        .scout-section {
+            margin-bottom: 10px;
+        }
+        .scout-section-title {
+            font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #8b949e;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
+        }
+        .scout-stat-row {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px;
+        }
+        .scout-stat {
+            font-size: 0.85rem; color: #c0c0c0;
+        }
+        .scout-stat strong { color: #fff; }
+        .scout-map-tag {
+            display: inline-block; background: #0d1117; border: 1px solid #30363d;
+            border-radius: 4px; padding: 2px 8px; font-size: 0.8rem; color: #c0c0c0; margin: 2px;
+        }
+        .scout-map-tag.best { border-color: #00ff8850; color: #00ff88; }
+        .scout-map-tag.worst { border-color: #ff445550; color: #ff4455; }
+        .scout-counter-tag {
+            display: inline-block; background: #1a1d24; border: 1px solid #ffcc0050;
+            border-radius: 4px; padding: 2px 8px; font-size: 0.8rem; color: #ffcc00; margin: 2px;
+        }
+
         .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
 
         @media (max-width: 900px) {
@@ -274,6 +366,34 @@
             <div class="panel-header"><span class="icon">&#128994;</span> Server Status</div>
             <div id="serverStatus" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
         </div>
+
+        <!-- Community Live Feed -->
+        <div class="panel grid-full">
+            <div class="panel-header"><span class="icon">&#127760;</span> COMMUNITY LIVE</div>
+            <div id="communityLivePanel">
+                <div class="empty-state">Loading community data...</div>
+            </div>
+        </div>
+
+        <!-- Trending Runners -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#128293;</span> TRENDING NOW</div>
+            <div id="trendingPanel">
+                <div class="empty-state">Loading trending runners...</div>
+            </div>
+        </div>
+
+        <!-- Pre-Match Scouting -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#128269;</span> SCOUT RUNNER</div>
+            <div class="scout-input-row">
+                <input type="text" id="scoutInput" placeholder="Runner name...">
+                <button onclick="loadScouting()">Scout</button>
+            </div>
+            <div id="scoutPanel">
+                <div class="empty-state">Type a runner name and hit Scout</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -324,6 +444,8 @@ async function refreshAll() {
         loadLoadouts(),
         loadTTK(),
         loadServerStatus(),
+        loadCommunityLive(),
+        loadTrending(),
     ]);
     document.getElementById('refreshInfo').textContent =
         'Updated ' + new Date().toLocaleTimeString() + ' · Auto-refresh 30s';
@@ -600,6 +722,125 @@ async function loadLive() {
         // Silently fail — panel stays in last state
     }
 }
+
+async function loadCommunityLive() {
+    try {
+        const res = await fetch('/api/community/live');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const agentsOnline = d.total_active || 0;
+        const inMatch = d.in_match || 0;
+        const inQueue = d.queuing || 0;
+
+        let html = `<div class="community-stats">
+            <div class="community-stat"><div class="val">${agentsOnline}</div><div class="lbl">Agents Online</div></div>
+            <div class="community-stat"><div class="val val-green">${inMatch}</div><div class="lbl">In Match</div></div>
+            <div class="community-stat"><div class="val val-yellow">${inQueue}</div><div class="lbl">In Queue</div></div>
+        </div>`;
+
+        if (d.regions && d.regions.length) {
+            const regionStr = d.regions.map(r => `<strong>${r.region}</strong> (${r.players})`).join(' | ');
+            html += `<div class="community-regions">Regions: ${regionStr}</div>`;
+        }
+
+        const avgPing = d.avg_ping || 0;
+        html += `<div class="community-ping">Community Avg Ping: <span class="val">${avgPing}ms</span></div>`;
+
+        document.getElementById('communityLivePanel').innerHTML = html;
+    } catch {
+        document.getElementById('communityLivePanel').innerHTML = '<div class="empty-state">Could not load community data</div>';
+    }
+}
+
+async function loadTrending() {
+    try {
+        const res = await fetch('/api/community/trending');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        if (!d.trending || !d.trending.length) throw new Error();
+
+        const maxPicks = Math.max(...d.trending.map(r => r.picks || 0), 1);
+
+        const html = d.trending.map((r, i) => {
+            const wr = r.win_rate || 0;
+            const wrCls = wr >= 55 ? 'val-green' : wr >= 45 ? 'val-yellow' : 'val-red';
+            const barPct = ((r.picks || 0) / maxPicks * 100).toFixed(0);
+            return `<div class="trending-row">
+                <div class="trending-rank">${i + 1}</div>
+                <div class="trending-name">${r.runner_name}</div>
+                <div class="trending-picks">${r.picks} picks</div>
+                <div class="trending-bar-bg"><div class="trending-bar-fill" style="width:${barPct}%"></div></div>
+                <div class="trending-wr ${wrCls}">${wr.toFixed(1)}%</div>
+            </div>`;
+        }).join('');
+
+        document.getElementById('trendingPanel').innerHTML = html;
+    } catch {
+        document.getElementById('trendingPanel').innerHTML = '<div class="empty-state">No trending data available</div>';
+    }
+}
+
+async function loadScouting() {
+    const runner = document.getElementById('scoutInput').value.trim();
+    if (!runner) return;
+
+    const panel = document.getElementById('scoutPanel');
+    panel.innerHTML = '<div class="empty-state">Scouting...</div>';
+
+    try {
+        const res = await fetch(`/api/community/scouting/${encodeURIComponent(runner)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const r = d.runner || {};
+        let html = `<div class="scout-result">`;
+        html += `<div class="scout-result-header">${r.name || runner} — ${r.role || ''}</div>`;
+
+        // Stats section
+        html += `<div class="scout-section">
+            <div class="scout-section-title">Stats</div>
+            <div class="scout-stat-row">
+                <div class="scout-stat">Tier: <strong>${r.tier || '?'}</strong></div>
+                <div class="scout-stat">Win Rate: <strong>${(r.win_rate || 0).toFixed(1)}%</strong></div>
+                <div class="scout-stat">Pick Rate: <strong>${(r.pick_rate || 0).toFixed(1)}%</strong></div>
+                <div class="scout-stat">Ban Rate: <strong>${(r.ban_rate || 0).toFixed(1)}%</strong></div>
+            </div>
+        </div>`;
+
+        // Best/Worst maps
+        if (d.best_maps && d.best_maps.length) {
+            html += `<div class="scout-section">
+                <div class="scout-section-title">Best Maps</div>
+                <div>${d.best_maps.map(m => `<span class="scout-map-tag best">${m.map_name} (${m.win_rate}%)</span>`).join('')}</div>
+            </div>`;
+        }
+        if (d.worst_maps && d.worst_maps.length) {
+            html += `<div class="scout-section">
+                <div class="scout-section-title">Worst Maps</div>
+                <div>${d.worst_maps.map(m => `<span class="scout-map-tag worst">${m.map_name} (${m.win_rate}%)</span>`).join('')}</div>
+            </div>`;
+        }
+
+        // Counter-picks
+        if (d.counters && d.counters.length) {
+            html += `<div class="scout-section">
+                <div class="scout-section-title">Counter-Picks</div>
+                <div>${d.counters.map(c => `<span class="scout-counter-tag">${c.runner_name} (${c.win_rate}% in ${c.encounters} games)</span>`).join('')}</div>
+            </div>`;
+        }
+
+        html += `</div>`;
+        panel.innerHTML = html;
+    } catch {
+        panel.innerHTML = '<div class="empty-state">Could not find scouting data for "' + runner + '"</div>';
+    }
+}
+
+document.getElementById('scoutInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadScouting();
+});
 
 function timeAgo(dateStr) {
     const now = new Date();

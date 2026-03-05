@@ -821,6 +821,164 @@ def create_app(bot) -> FastAPI:
         )
         return {"shifts": [dict(r) for r in rows]}
 
+    # -- Community Intel --
+
+    @app.get("/api/community/live")
+    async def community_live():
+        """Shows what's happening across all active capture agents right now."""
+        redis = _redis()
+        if not redis:
+            raise HTTPException(503, "Redis offline")
+        try:
+            agents = []
+            async for key in redis.scan_iter(match="marathon:live:*"):
+                data = await cache_get(redis, key)
+                if data:
+                    agents.append(data)
+        except Exception:
+            raise HTTPException(503, "Failed to scan live agents")
+
+        total = len(agents)
+        in_match = sum(1 for a in agents if a.get("state") == "in_match")
+        queuing = sum(1 for a in agents if a.get("state") == "queuing")
+
+        regions: dict[str, int] = defaultdict(int)
+        ping_values = []
+        for a in agents:
+            region = a.get("region", "unknown")
+            regions[region] += 1
+            ping = a.get("ping_ms", 0)
+            if ping > 0:
+                ping_values.append(ping)
+
+        avg_ping = round(sum(ping_values) / len(ping_values), 1) if ping_values else 0
+
+        return {
+            "total_active": total,
+            "in_match": in_match,
+            "queuing": queuing,
+            "regions": [{"region": r, "players": c} for r, c in sorted(regions.items(), key=lambda x: -x[1])],
+            "avg_ping": avg_ping,
+        }
+
+    @app.get("/api/community/trending")
+    async def community_trending():
+        """What runners are being picked this hour."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT runner_name, "
+            "COUNT(*) AS picks, "
+            "COUNT(*) FILTER (WHERE result = 'win') AS wins, "
+            "ROUND(COUNT(*) FILTER (WHERE result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS win_rate "
+            "FROM matches "
+            "WHERE created_at > now() - INTERVAL '2 hours' "
+            "GROUP BY runner_name "
+            "ORDER BY picks DESC "
+            "LIMIT 10"
+        )
+        return {
+            "window_hours": 2,
+            "trending": [dict(r) for r in rows],
+        }
+
+    @app.get("/api/community/scouting/{runner_name}")
+    async def community_scouting(runner_name: str):
+        """Pre-match scouting tips for a specific runner."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+
+        # Overall runner stats
+        runner = await pool.fetchrow(
+            "SELECT * FROM runners WHERE UPPER(name) = UPPER($1)", runner_name
+        )
+        if not runner:
+            raise HTTPException(404, "Runner not found")
+
+        # Map-specific win rates
+        map_rows = await pool.fetch(
+            "SELECT map_name, "
+            "COUNT(*) AS total, "
+            "COUNT(*) FILTER (WHERE result = 'win') AS wins, "
+            "ROUND(COUNT(*) FILTER (WHERE result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS win_rate "
+            "FROM matches "
+            "WHERE UPPER(runner_name) = UPPER($1) "
+            "GROUP BY map_name "
+            "HAVING COUNT(*) >= 2 "
+            "ORDER BY win_rate DESC",
+            runner_name,
+        )
+
+        best_maps = [dict(r) for r in map_rows[:5]]
+        worst_maps = [dict(r) for r in sorted(map_rows, key=lambda r: r["win_rate"])[:5]] if map_rows else []
+
+        # Best counter-picks: runners with highest win rate against this runner on the same maps
+        counters = await pool.fetch(
+            "SELECT m2.runner_name, "
+            "COUNT(*) AS encounters, "
+            "COUNT(*) FILTER (WHERE m2.result = 'win') AS wins, "
+            "ROUND(COUNT(*) FILTER (WHERE m2.result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS win_rate "
+            "FROM matches m1 "
+            "JOIN matches m2 ON m1.map_name = m2.map_name "
+            "  AND m1.created_at::date = m2.created_at::date "
+            "  AND UPPER(m1.runner_name) != UPPER(m2.runner_name) "
+            "WHERE UPPER(m1.runner_name) = UPPER($1) "
+            "  AND m1.result = 'loss' "
+            "  AND m2.result = 'win' "
+            "GROUP BY m2.runner_name "
+            "HAVING COUNT(*) >= 2 "
+            "ORDER BY win_rate DESC "
+            "LIMIT 5",
+            runner_name,
+        )
+
+        return {
+            "runner": dict(runner),
+            "best_maps": best_maps,
+            "worst_maps": worst_maps,
+            "counters": [dict(r) for r in counters],
+        }
+
+    @app.get("/api/community/servers/active")
+    async def community_active_servers():
+        """Active servers right now from all agents."""
+        redis = _redis()
+        if not redis:
+            raise HTTPException(503, "Redis offline")
+        try:
+            agents = []
+            async for key in redis.scan_iter(match="marathon:live:*"):
+                data = await cache_get(redis, key)
+                if data:
+                    agents.append(data)
+        except Exception:
+            raise HTTPException(503, "Failed to scan live agents")
+
+        # Group by server_ip and region
+        servers: dict[tuple[str, str], list] = defaultdict(list)
+        for a in agents:
+            server_ip = a.get("server_ip", "")
+            if not server_ip:
+                continue
+            region = a.get("region", "unknown")
+            servers[(server_ip, region)].append(a)
+
+        result = []
+        for (server_ip, region), group in servers.items():
+            pings = [a.get("ping_ms", 0) for a in group if a.get("ping_ms", 0) > 0]
+            avg_ping = round(sum(pings) / len(pings), 1) if pings else 0
+            result.append({
+                "server_ip": server_ip,
+                "region": region,
+                "player_count": len(group),
+                "avg_ping": avg_ping,
+            })
+
+        result.sort(key=lambda s: -s["player_count"])
+        return {"active_servers": result}
+
     # -- HTML pages served from public/ --
     @app.get("/")
     async def index():
