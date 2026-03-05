@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capture Agent | Marathon Intel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+        .hero { background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%); border-bottom: 1px solid #00ff8820; padding: 50px 20px; text-align: center; }
+        .hero h1 { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; color: #00ff88; text-transform: uppercase; letter-spacing: 6px; margin-bottom: 8px; }
+        .hero p { color: #8b949e; font-size: 1.05rem; max-width: 650px; margin: 0 auto; line-height: 1.6; }
+        .nav { display: flex; justify-content: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+        .nav a { font-family: 'Space Mono', monospace; color: #00ff88; text-decoration: none; padding: 8px 16px; border: 1px solid #00ff8840; border-radius: 4px; transition: all 0.2s; font-size: 0.82rem; }
+        .nav a:hover { background: #00ff8820; border-color: #00ff88; }
+
+        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+        h2 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; letter-spacing: 3px; font-size: 1.8rem; margin-bottom: 12px; margin-top: 40px; }
+        h2:first-of-type { margin-top: 0; }
+        h3 { font-family: 'Rajdhani', sans-serif; color: #00ff88; font-size: 1.2rem; margin: 20px 0 8px 0; }
+
+        p, li { line-height: 1.7; color: #c0c0c0; font-size: 0.95rem; }
+        ul, ol { padding-left: 20px; margin: 8px 0; }
+        li { margin-bottom: 6px; }
+
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; margin: 16px 0; }
+        .card h3 { margin-top: 0; }
+
+        .download-btn {
+            display: inline-block;
+            background: #00ff88;
+            color: #0a0a0f;
+            padding: 14px 32px;
+            border-radius: 6px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            text-decoration: none;
+            transition: background 0.2s, transform 0.1s;
+            margin: 8px 8px 8px 0;
+        }
+        .download-btn:hover { background: #00dd77; }
+        .download-btn:active { transform: scale(0.97); }
+        .download-btn.secondary {
+            background: transparent;
+            color: #00ff88;
+            border: 2px solid #00ff88;
+        }
+        .download-btn.secondary:hover { background: #00ff8820; }
+
+        code {
+            font-family: 'Space Mono', monospace;
+            background: #1a1d24;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #00ff88;
+        }
+        pre {
+            background: #1a1d24;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 12px 0;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: #c0c0c0;
+        }
+        pre .cmd { color: #00ff88; }
+        pre .comment { color: #6a737d; }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-right: 6px;
+        }
+        .badge-win { background: #00ff8830; color: #00ff88; }
+        .badge-mac { background: #8b5cf630; color: #a78bfa; }
+        .badge-linux { background: #f9731630; color: #fb923c; }
+
+        .what-tracked {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .what-tracked .item {
+            background: #1a1d24;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border-left: 3px solid #00ff88;
+        }
+        .what-tracked .item strong { color: #00ff88; }
+        .what-tracked .not-tracked {
+            border-left-color: #30363d;
+        }
+        .what-tracked .not-tracked strong { color: #8b949e; }
+
+        .steps { counter-reset: step; list-style: none; padding-left: 0; }
+        .steps li { counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 20px; }
+        .steps li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0; top: 0;
+            width: 28px; height: 28px;
+            background: #00ff88;
+            color: #0a0a0f;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.1rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .faq { margin: 16px 0; }
+        .faq details { margin-bottom: 8px; }
+        .faq summary {
+            cursor: pointer;
+            padding: 10px 16px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        .faq summary:hover { border-color: #00ff88; }
+        .faq details[open] summary { border-color: #00ff88; border-radius: 6px 6px 0 0; }
+        .faq .answer { padding: 12px 16px; background: #1a1d24; border: 1px solid #30363d; border-top: none; border-radius: 0 0 6px 6px; }
+
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 2.2rem; }
+            .what-tracked { grid-template-columns: 1fr; }
+            .download-btn { display: block; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>Network Capture Agent</h1>
+        <p>Help the community by sharing anonymous network data while you play. Track server performance, detect bad servers, and find the best times to play.</p>
+        <div class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/network">Network Stats</a>
+            <a href="/submit">Submit Match</a>
+            <a href="/docs">API Docs</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>What It Does</h2>
+        <p>The capture agent runs alongside Marathon and passively monitors your network connection to game servers. It detects matches automatically and reports performance data to the community dashboard.</p>
+
+        <div class="what-tracked">
+            <div class="item"><strong>Tracked:</strong> Server ping, jitter, packet loss</div>
+            <div class="item"><strong>Tracked:</strong> Server region &amp; IP</div>
+            <div class="item"><strong>Tracked:</strong> Match duration (auto-detected)</div>
+            <div class="item"><strong>Tracked:</strong> Queue wait times</div>
+            <div class="item"><strong>Tracked:</strong> Server tick rate</div>
+            <div class="item"><strong>Tracked:</strong> Packets per second</div>
+            <div class="item not-tracked"><strong>NOT Tracked:</strong> Game content or chat</div>
+            <div class="item not-tracked"><strong>NOT Tracked:</strong> Your real name or IP</div>
+        </div>
+
+        <h2>Quick Start</h2>
+
+        <div class="card">
+            <h3><span class="badge badge-win">Windows</span> One-Line Install</h3>
+            <p>Open <strong>PowerShell as Administrator</strong> and paste:</p>
+            <pre><span class="comment"># Downloads and runs the capture agent</span>
+<span class="cmd">irm https://marathon.straightfirefood.blog/static/install-capture.ps1 | iex</span></pre>
+            <p style="font-size:0.85rem; color:#8b949e; margin-top:8px;">This will install Wireshark (if needed), download the agent, and start capturing. You'll be asked for a username.</p>
+        </div>
+
+        <div class="card">
+            <h3><span class="badge badge-mac">macOS</span> <span class="badge badge-linux">Linux</span> One-Line Install</h3>
+            <pre><span class="comment"># Install tshark first</span>
+<span class="cmd">brew install wireshark</span>  <span class="comment"># macOS</span>
+<span class="cmd">sudo apt install tshark</span>  <span class="comment"># Ubuntu/Debian</span>
+
+<span class="comment"># Download and run</span>
+<span class="cmd">curl -sL https://marathon.straightfirefood.blog/static/netcapture.py -o netcapture.py
+sudo python3 netcapture.py --user-hash YOUR_NAME</span></pre>
+        </div>
+
+        <h2>Manual Setup</h2>
+
+        <ol class="steps">
+            <li>
+                <strong>Install Wireshark / tshark</strong><br>
+                <span class="badge badge-win">Windows</span> Download from <code>wireshark.org</code> &mdash; make sure to check "Install TShark" during setup<br>
+                <span class="badge badge-mac">macOS</span> <code>brew install wireshark</code><br>
+                <span class="badge badge-linux">Linux</span> <code>sudo apt install tshark</code>
+            </li>
+            <li>
+                <strong>Install Python 3.10+</strong><br>
+                <span class="badge badge-win">Windows</span> <code>python.org/downloads</code> &mdash; check "Add to PATH"<br>
+                <span class="badge badge-mac">macOS</span> <code>brew install python3</code><br>
+                <span class="badge badge-linux">Linux</span> Usually pre-installed. Check: <code>python3 --version</code>
+            </li>
+            <li>
+                <strong>Download the agent</strong><br>
+                <a href="/static/netcapture.py" class="download-btn" download>Download netcapture.py</a>
+                <a href="/static/run-capture.bat" class="download-btn secondary" download>Download Windows Launcher</a>
+                <a href="/static/run-capture.sh" class="download-btn secondary" download>Download Mac/Linux Launcher</a>
+            </li>
+            <li>
+                <strong>Run it while you play</strong><br>
+                Open a terminal <strong>as Administrator/root</strong> and run:
+                <pre><span class="cmd">python3 netcapture.py --user-hash YOUR_NAME</span>
+
+<span class="comment"># Or use a launcher script:</span>
+<span class="cmd">./run-capture.sh YOUR_NAME</span>     <span class="comment"># Mac/Linux</span>
+<span class="cmd">run-capture.bat YOUR_NAME</span>      <span class="comment"># Windows</span></pre>
+                Then just play Marathon normally. Data captures automatically.
+            </li>
+        </ol>
+
+        <h2>Privacy &amp; Security</h2>
+        <div class="card">
+            <p>We take your privacy seriously:</p>
+            <ul>
+                <li><strong>Anonymous by design</strong> &mdash; you pick your own user hash. No accounts, no emails, no real names.</li>
+                <li><strong>Network metadata only</strong> &mdash; we capture packet timing and server IPs, never packet contents. We cannot see your gameplay, chat, or any personal data.</li>
+                <li><strong>Your IP stays local</strong> &mdash; only the server's IP is reported, never yours.</li>
+                <li><strong>Open source</strong> &mdash; the capture script is a single Python file. Read it yourself before running.</li>
+                <li><strong>No tracking</strong> &mdash; no cookies, no analytics, no fingerprinting on this site.</li>
+                <li><strong>Opt-in only</strong> &mdash; nothing runs unless you start it. Stop it anytime with Ctrl+C.</li>
+            </ul>
+        </div>
+
+        <h2>FAQ</h2>
+        <div class="faq">
+            <details>
+                <summary>Do I need to run this as admin?</summary>
+                <div class="answer">Yes. Packet capture requires elevated privileges on all operating systems. On Windows, right-click PowerShell and choose "Run as Administrator". On Mac/Linux, use <code>sudo</code>.</div>
+            </details>
+            <details>
+                <summary>Will this affect my game performance?</summary>
+                <div class="answer">No. The agent passively reads packets that your system is already processing. It uses minimal CPU and memory. TShark is the industry-standard tool used by network engineers worldwide.</div>
+            </details>
+            <details>
+                <summary>What ports does it listen on?</summary>
+                <div class="answer">UDP ports 63006-63059 (Marathon game traffic) plus auxiliary ports 53932, 55575, and 57787. It only captures packets on these specific ports.</div>
+            </details>
+            <details>
+                <summary>How does match detection work?</summary>
+                <div class="answer">The agent monitors packets-per-second. When traffic spikes above 20 PPS from a server, it marks a match as started. When it drops below 3 PPS for 10+ seconds after at least 30 seconds of gameplay, the match is considered ended. Queue time is measured from initial server contact to match start.</div>
+            </details>
+            <details>
+                <summary>Can I see my own data?</summary>
+                <div class="answer">Yes! Use the <code>/recap</code> or <code>/streaks</code> commands in Discord with your user hash, or hit the API at <code>/api/recap/YOUR_HASH</code>.</div>
+            </details>
+            <details>
+                <summary>What if I want my data removed?</summary>
+                <div class="answer">Contact us on Discord. Since data is tied to your self-chosen hash (not an account), we can purge all records matching your hash.</div>
+            </details>
+        </div>
+
+        <h2>Community Impact</h2>
+        <p>Every capture agent running makes the data better for everyone:</p>
+        <div class="what-tracked" style="margin-bottom: 40px;">
+            <div class="item"><strong>5 users</strong> Basic peak hours data</div>
+            <div class="item"><strong>20 users</strong> Reliable server blacklist</div>
+            <div class="item"><strong>50 users</strong> Statistical meta shifts</div>
+            <div class="item"><strong>100+ users</strong> Pro-level insights</div>
+        </div>
+    </div>
+</body>
+</html>

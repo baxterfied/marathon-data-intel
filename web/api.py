@@ -2,12 +2,15 @@
 
 import json
 import logging
+import time
+from collections import defaultdict
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
 
 from services.redis_cache import (
@@ -19,22 +22,47 @@ log = logging.getLogger("marathon.web")
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
 
+# Simple in-memory rate limiter (per IP, per endpoint group)
+_rate_limits: dict[str, list[float]] = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_WRITES = 30  # max write requests per window per IP
+RATE_LIMIT_MAX_READS = 120  # max read requests per window per IP
+
+
+def _check_rate_limit(client_ip: str, is_write: bool = False) -> bool:
+    """Returns True if request is allowed, False if rate limited."""
+    key = f"{client_ip}:{'w' if is_write else 'r'}"
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+    # Clean old entries
+    _rate_limits[key] = [t for t in _rate_limits[key] if t > cutoff]
+    limit = RATE_LIMIT_MAX_WRITES if is_write else RATE_LIMIT_MAX_READS
+    if len(_rate_limits[key]) >= limit:
+        return False
+    _rate_limits[key].append(now)
+    return True
+
 
 # -- Pydantic models --
 
 class MatchSubmission(BaseModel):
-    user_hash: str
-    runner_name: str
-    map_name: str = "unknown"
-    mode: str = "extraction"
+    user_hash: str = Field(..., min_length=1, max_length=100)
+    runner_name: str = Field(..., min_length=1, max_length=50)
+    map_name: str = Field(default="unknown", max_length=100)
+    mode: str = Field(default="extraction", max_length=50)
     result: str  # win, loss, draw
-    kills: int = 0
-    deaths: int = 0
-    assists: int = 0
-    damage: int = 0
-    duration_s: int = 0
+    kills: int = Field(default=0, ge=0, le=999)
+    deaths: int = Field(default=0, ge=0, le=999)
+    assists: int = Field(default=0, ge=0, le=999)
+    damage: int = Field(default=0, ge=0, le=999999)
+    duration_s: int = Field(default=0, ge=0, le=7200)
     loadout: dict = Field(default_factory=dict)
-    patch: str = "1.0"
+    patch: str = Field(default="1.0", max_length=20)
+
+    @field_validator("user_hash", "runner_name", "map_name")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        return v.strip()
 
 
 class NetworkSubmission(BaseModel):
@@ -73,6 +101,14 @@ class MatchSessionSubmission(BaseModel):
 def create_app(bot) -> FastAPI:
     app = FastAPI(title="Marathon Data Intel", version="1.0.0")
     app.state.bot = bot
+
+    # CORS — allow browser requests from the dashboard
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://marathon.straightfirefood.blog"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
 
     # Serve static public files
     if PUBLIC_DIR.exists():
@@ -162,7 +198,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Matches --
     @app.post("/api/matches")
-    async def submit_match(match: MatchSubmission):
+    async def submit_match(match: MatchSubmission, request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        if not _check_rate_limit(client_ip, is_write=True):
+            raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
             raise HTTPException(503, "Database offline")
@@ -181,7 +220,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Network --
     @app.post("/api/network")
-    async def submit_network(data: NetworkSubmission):
+    async def submit_network(data: NetworkSubmission, request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        if not _check_rate_limit(client_ip, is_write=True):
+            raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
             raise HTTPException(503, "Database offline")
@@ -548,7 +590,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Match Sessions --
     @app.post("/api/sessions")
-    async def submit_session(session: MatchSessionSubmission):
+    async def submit_session(session: MatchSessionSubmission, request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        if not _check_rate_limit(client_ip, is_write=True):
+            raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
             raise HTTPException(503, "Database offline")
@@ -685,6 +730,13 @@ def create_app(bot) -> FastAPI:
     @app.get("/submit")
     async def submit_page():
         f = PUBLIC_DIR / "submit.html"
+        if f.exists():
+            return FileResponse(f)
+        raise HTTPException(404)
+
+    @app.get("/capture")
+    async def capture_page():
+        f = PUBLIC_DIR / "capture.html"
         if f.exists():
             return FileResponse(f)
         raise HTTPException(404)
