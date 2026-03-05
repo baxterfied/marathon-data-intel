@@ -821,6 +821,392 @@ def create_app(bot) -> FastAPI:
         )
         return {"shifts": [dict(r) for r in rows]}
 
+    # -- Competitive Intel --
+
+    @app.get("/api/intel/best-times/{user_hash}")
+    async def intel_best_times(user_hash: str):
+        """Best time to play — network quality and match performance by hour."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            net_rows = await pool.fetch(
+                "SELECT EXTRACT(hour FROM recorded_at)::int AS hour, "
+                "AVG(avg_ping_ms) AS avg_ping, AVG(jitter_ms) AS avg_jitter, "
+                "AVG(packet_loss) AS avg_loss "
+                "FROM network_performance WHERE user_hash = $1 "
+                "GROUP BY EXTRACT(hour FROM recorded_at) ORDER BY hour",
+                user_hash,
+            )
+            match_rows = await pool.fetch(
+                "SELECT EXTRACT(hour FROM created_at)::int AS hour, "
+                "COUNT(*) AS matches, "
+                "SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END)::float / COUNT(*) * 100 AS win_rate, "
+                "AVG(kills) AS avg_kills, AVG(deaths) AS avg_deaths "
+                "FROM matches WHERE user_hash = $1 "
+                "GROUP BY EXTRACT(hour FROM created_at) ORDER BY hour",
+                user_hash,
+            )
+            net_by_hour = {r["hour"]: dict(r) for r in net_rows}
+            match_by_hour = {r["hour"]: dict(r) for r in match_rows}
+            hours = sorted(set(list(net_by_hour.keys()) + list(match_by_hour.keys())))
+            combined = []
+            for h in hours:
+                entry = {"hour": h}
+                n = net_by_hour.get(h)
+                m = match_by_hour.get(h)
+                if n:
+                    entry["avg_ping"] = round(float(n["avg_ping"]), 1)
+                    entry["avg_jitter"] = round(float(n["avg_jitter"]), 2)
+                    entry["avg_loss"] = round(float(n["avg_loss"]), 3)
+                else:
+                    entry["avg_ping"] = None
+                    entry["avg_jitter"] = None
+                    entry["avg_loss"] = None
+                if m:
+                    entry["win_rate"] = round(float(m["win_rate"]), 1)
+                    entry["avg_kills"] = round(float(m["avg_kills"]), 1)
+                    entry["avg_deaths"] = round(float(m["avg_deaths"]), 1)
+                    entry["matches"] = m["matches"]
+                else:
+                    entry["win_rate"] = None
+                    entry["avg_kills"] = None
+                    entry["avg_deaths"] = None
+                    entry["matches"] = 0
+                combined.append(entry)
+            return {"user_hash": user_hash, "hours": combined}
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_best_times failed")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/intel/server-quality")
+    async def intel_server_quality():
+        """Server quality rankings based on network performance data."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            rows = await pool.fetch(
+                "SELECT server_ip, AVG(avg_ping_ms) AS avg_ping, "
+                "AVG(jitter_ms) AS avg_jitter, AVG(packet_loss) AS avg_loss, "
+                "AVG(tick_rate) AS avg_tick_rate, COUNT(*) AS sample_count "
+                "FROM network_performance GROUP BY server_ip "
+                "ORDER BY AVG(packet_loss) ASC, AVG(avg_ping_ms) ASC LIMIT 20"
+            )
+            servers = []
+            for r in rows:
+                ping = float(r["avg_ping"])
+                loss = float(r["avg_loss"])
+                if loss < 1 and ping < 50:
+                    quality = "good"
+                elif loss < 3 and ping < 100:
+                    quality = "ok"
+                else:
+                    quality = "bad"
+                servers.append({
+                    "server_ip": r["server_ip"],
+                    "avg_ping": round(ping, 1),
+                    "avg_jitter": round(float(r["avg_jitter"]), 2),
+                    "avg_loss": round(loss, 3),
+                    "avg_tick_rate": round(float(r["avg_tick_rate"]), 1) if r["avg_tick_rate"] else None,
+                    "sample_count": r["sample_count"],
+                    "quality": quality,
+                })
+            return {"servers": servers}
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_server_quality failed")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/intel/session-decay/{user_hash}")
+    async def intel_session_decay(user_hash: str):
+        """Track performance decay within play sessions."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            match_rows = await pool.fetch(
+                "SELECT kills, deaths, result, created_at FROM matches "
+                "WHERE user_hash = $1 ORDER BY created_at ASC",
+                user_hash,
+            )
+            if not match_rows:
+                return {"user_hash": user_hash, "sessions": [], "message": "No matches found"}
+
+            # Group matches into sessions (gap > 30 min = new session)
+            sessions = []
+            current_session = [match_rows[0]]
+            for i in range(1, len(match_rows)):
+                gap = (match_rows[i]["created_at"] - match_rows[i - 1]["created_at"]).total_seconds()
+                if gap > 1800:
+                    sessions.append(current_session)
+                    current_session = [match_rows[i]]
+                else:
+                    current_session.append(match_rows[i])
+            sessions.append(current_session)
+
+            def _calc_stats(matches):
+                if not matches:
+                    return {"kd": 0, "win_rate": 0}
+                k = sum(m["kills"] for m in matches)
+                d = sum(m["deaths"] for m in matches)
+                w = sum(1 for m in matches if m["result"] == "win")
+                return {
+                    "kd": round(k / max(d, 1), 2),
+                    "win_rate": round(w / len(matches) * 100, 1),
+                }
+
+            # Query network performance for ping decay tracking
+            net_rows = await pool.fetch(
+                "SELECT avg_ping_ms, recorded_at FROM network_performance "
+                "WHERE user_hash = $1 ORDER BY recorded_at ASC",
+                user_hash,
+            )
+
+            session_results = []
+            for sess in sessions:
+                if len(sess) < 2:
+                    continue
+                mid = len(sess) // 2
+                first_half = sess[:mid]
+                second_half = sess[mid:]
+                first_stats = _calc_stats(first_half)
+                second_stats = _calc_stats(second_half)
+
+                # Check for ping increase during session window
+                sess_start = sess[0]["created_at"]
+                sess_end = sess[-1]["created_at"]
+                session_pings = [
+                    float(n["avg_ping_ms"]) for n in net_rows
+                    if sess_start <= n["recorded_at"] <= sess_end
+                ]
+                ping_increased = False
+                if len(session_pings) >= 2:
+                    first_ping = sum(session_pings[:len(session_pings)//2]) / (len(session_pings)//2)
+                    second_ping = sum(session_pings[len(session_pings)//2:]) / len(session_pings[len(session_pings)//2:])
+                    ping_increased = second_ping > first_ping * 1.1
+
+                session_results.append({
+                    "started_at": sess[0]["created_at"].isoformat(),
+                    "match_count": len(sess),
+                    "first_half_kd": first_stats["kd"],
+                    "second_half_kd": second_stats["kd"],
+                    "first_half_win_rate": first_stats["win_rate"],
+                    "second_half_win_rate": second_stats["win_rate"],
+                    "kd_decay": round(second_stats["kd"] - first_stats["kd"], 2),
+                    "win_rate_decay": round(second_stats["win_rate"] - first_stats["win_rate"], 1),
+                    "ping_increased": ping_increased,
+                })
+
+            return {"user_hash": user_hash, "sessions": session_results}
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_session_decay failed")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/intel/queue-predict/{region}")
+    async def intel_queue_predict(region: str):
+        """Predict queue times by hour for a given region."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            from datetime import datetime, timezone
+            rows = await pool.fetch(
+                "SELECT EXTRACT(hour FROM started_at)::int AS hour, "
+                "AVG(queue_time_s) AS avg_queue_time, COUNT(*) AS sample_count "
+                "FROM match_sessions WHERE UPPER(region) = UPPER($1) AND queue_time_s > 0 "
+                "GROUP BY EXTRACT(hour FROM started_at) ORDER BY hour",
+                region,
+            )
+            if not rows:
+                return {"region": region, "predictions": [], "message": "No queue data for this region"}
+
+            by_hour = {r["hour"]: dict(r) for r in rows}
+            current_hour = datetime.now(timezone.utc).hour
+            predictions = []
+            for offset in range(4):
+                h = (current_hour + offset) % 24
+                data = by_hour.get(h)
+                predictions.append({
+                    "hour": h,
+                    "avg_queue_time_s": round(float(data["avg_queue_time"]), 1) if data else None,
+                    "confidence": data["sample_count"] if data else 0,
+                    "label": "current" if offset == 0 else f"+{offset}h",
+                })
+
+            return {"region": region, "predictions": predictions}
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_queue_predict failed")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/intel/lobby-intensity/{user_hash}")
+    async def intel_lobby_intensity(user_hash: str):
+        """Match pacing/intensity based on packets per second."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            rows = await pool.fetch(
+                "SELECT server_ip, region, started_at, duration_s, total_packets, avg_ping_ms "
+                "FROM match_sessions WHERE user_hash = $1 AND duration_s > 0 "
+                "ORDER BY started_at DESC LIMIT 20",
+                user_hash,
+            )
+            if not rows:
+                return {"user_hash": user_hash, "sessions": [], "message": "No session data found"}
+
+            sessions = []
+            for r in rows:
+                duration = float(r["duration_s"])
+                total_packets = r["total_packets"] or 0
+                pps = round(total_packets / max(duration, 1), 1)
+                if pps < 80:
+                    intensity = "calm"
+                elif pps <= 120:
+                    intensity = "normal"
+                else:
+                    intensity = "intense"
+                sessions.append({
+                    "server_ip": r["server_ip"],
+                    "region": r["region"],
+                    "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+                    "duration_s": duration,
+                    "total_packets": total_packets,
+                    "packets_per_second": pps,
+                    "intensity": intensity,
+                    "avg_ping_ms": round(float(r["avg_ping_ms"]), 1) if r["avg_ping_ms"] else None,
+                })
+
+            return {"user_hash": user_hash, "sessions": sessions}
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_lobby_intensity failed")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/intel/performance/{user_hash}")
+    async def intel_performance(user_hash: str):
+        """Personal performance summary — best/worst runners, maps, trends."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        try:
+            rows = await pool.fetch(
+                "SELECT runner_name, map_name, result, kills, deaths, duration_s, created_at "
+                "FROM matches WHERE user_hash = $1 ORDER BY created_at DESC",
+                user_hash,
+            )
+            if not rows:
+                return {"user_hash": user_hash, "message": "No matches found"}
+
+            # Runner stats (min 3 matches)
+            runner_stats: dict[str, dict] = defaultdict(lambda: {"wins": 0, "total": 0})
+            for r in rows:
+                name = r["runner_name"]
+                runner_stats[name]["total"] += 1
+                if r["result"] == "win":
+                    runner_stats[name]["wins"] += 1
+
+            qualified_runners = {
+                k: v for k, v in runner_stats.items() if v["total"] >= 3
+            }
+            best_runner = None
+            worst_runner = None
+            if qualified_runners:
+                best_runner = max(
+                    qualified_runners,
+                    key=lambda k: qualified_runners[k]["wins"] / qualified_runners[k]["total"],
+                )
+                worst_runner = min(
+                    qualified_runners,
+                    key=lambda k: qualified_runners[k]["wins"] / qualified_runners[k]["total"],
+                )
+
+            # Map stats
+            map_stats: dict[str, dict] = defaultdict(lambda: {"wins": 0, "total": 0})
+            for r in rows:
+                name = r["map_name"]
+                map_stats[name]["total"] += 1
+                if r["result"] == "win":
+                    map_stats[name]["wins"] += 1
+
+            qualified_maps = {k: v for k, v in map_stats.items() if v["total"] >= 3}
+            best_map = None
+            worst_map = None
+            if qualified_maps:
+                best_map = max(
+                    qualified_maps,
+                    key=lambda k: qualified_maps[k]["wins"] / qualified_maps[k]["total"],
+                )
+                worst_map = min(
+                    qualified_maps,
+                    key=lambda k: qualified_maps[k]["wins"] / qualified_maps[k]["total"],
+                )
+
+            # Average session length
+            durations = [float(r["duration_s"]) for r in rows if r["duration_s"]]
+            avg_session_length = round(sum(durations) / len(durations), 1) if durations else 0
+
+            # Performance trend: last 10 vs previous 10
+            recent_10 = list(rows[:10])
+            prev_10 = list(rows[10:20])
+            def _trend_stats(matches):
+                if not matches:
+                    return {"win_rate": 0, "kd": 0}
+                w = sum(1 for m in matches if m["result"] == "win")
+                k = sum(m["kills"] for m in matches)
+                d = sum(m["deaths"] for m in matches)
+                return {
+                    "win_rate": round(w / len(matches) * 100, 1),
+                    "kd": round(k / max(d, 1), 2),
+                }
+
+            recent_stats = _trend_stats(recent_10)
+            prev_stats = _trend_stats(prev_10)
+            trend = "stable"
+            if prev_stats["win_rate"] > 0:
+                if recent_stats["win_rate"] > prev_stats["win_rate"] + 5:
+                    trend = "improving"
+                elif recent_stats["win_rate"] < prev_stats["win_rate"] - 5:
+                    trend = "declining"
+
+            def _runner_info(name, stats_dict):
+                if not name:
+                    return None
+                s = stats_dict[name]
+                return {
+                    "name": name,
+                    "win_rate": round(s["wins"] / s["total"] * 100, 1),
+                    "matches": s["total"],
+                }
+
+            return {
+                "user_hash": user_hash,
+                "total_matches": len(rows),
+                "best_runner": _runner_info(best_runner, qualified_runners),
+                "worst_runner": _runner_info(worst_runner, qualified_runners),
+                "best_map": _runner_info(best_map, qualified_maps),
+                "worst_map": _runner_info(worst_map, qualified_maps),
+                "avg_session_length_s": avg_session_length,
+                "trend": {
+                    "direction": trend,
+                    "recent": recent_stats,
+                    "previous": prev_stats,
+                },
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("intel_performance failed")
+            raise HTTPException(500, str(e))
+
     # -- Community Intel --
 
     @app.get("/api/community/live")

@@ -262,6 +262,56 @@
             border-radius: 4px; padding: 2px 8px; font-size: 0.8rem; color: #ffcc00; margin: 2px;
         }
 
+        /* Best Time to Play */
+        .hour-bar {
+            display: flex; align-items: center; gap: 6px; height: 20px; margin-bottom: 2px;
+        }
+        .hour-label {
+            font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #8b949e;
+            width: 28px; text-align: right; flex-shrink: 0;
+        }
+        .hour-fill {
+            height: 14px; border-radius: 2px; min-width: 2px; transition: width 0.3s;
+        }
+        .hour-current {
+            border: 1px solid #00ff88; border-radius: 3px; background: #00ff8810;
+        }
+
+        /* Server Quality */
+        .quality-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-family: 'Space Mono', monospace; font-size: 0.65rem; font-weight: 700;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .quality-good { background: #00ff8825; color: #00ff88; border: 1px solid #00ff8850; }
+        .quality-ok { background: #ffcc0025; color: #ffcc00; border: 1px solid #ffcc0050; }
+        .quality-bad { background: #ff445525; color: #ff4455; border: 1px solid #ff445550; }
+
+        /* Session Decay */
+        .decay-arrow {
+            font-size: 1.6rem; font-weight: 700; display: inline-block; margin: 0 8px;
+        }
+        .decay-up { color: #00ff88; }
+        .decay-down { color: #ff4455; }
+        .decay-flat { color: #ffcc00; }
+
+        /* Personal Performance Edge */
+        .edge-col {
+            flex: 1; min-width: 140px;
+        }
+        .edge-item {
+            background: #1a1d24; border-radius: 4px; padding: 6px 10px; margin-bottom: 6px;
+            font-size: 0.85rem; color: #c0c0c0;
+        }
+        .edge-item strong { color: #fff; }
+
+        /* Queue Prediction */
+        .queue-row {
+            display: flex; align-items: center; gap: 12px; padding: 6px 0;
+            border-bottom: 1px solid #1e2228; font-size: 0.85rem;
+        }
+        .queue-row:last-child { border-bottom: none; }
+
         .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
 
         @media (max-width: 900px) {
@@ -367,6 +417,36 @@
             <div id="serverStatus" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
         </div>
 
+        <!-- Best Time to Play -->
+        <div class="panel grid-2">
+            <div class="panel-header"><span class="icon">&#128337;</span> BEST TIME TO PLAY</div>
+            <div id="bestTimesPanel"><div class="empty-state">Loading best times...</div></div>
+        </div>
+
+        <!-- Server Quality -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#128737;</span> SERVER QUALITY</div>
+            <div id="serverQualityPanel"><div class="empty-state">Loading server quality...</div></div>
+        </div>
+
+        <!-- Session Decay -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#128267;</span> SESSION DECAY</div>
+            <div id="sessionDecayPanel"><div class="empty-state">Loading session decay...</div></div>
+        </div>
+
+        <!-- Queue Prediction -->
+        <div class="panel">
+            <div class="panel-header"><span class="icon">&#9203;</span> QUEUE TIMES</div>
+            <div id="queuePredictPanel"><div class="empty-state">Loading queue predictions...</div></div>
+        </div>
+
+        <!-- Personal Performance -->
+        <div class="panel grid-2">
+            <div class="panel-header"><span class="icon">&#9889;</span> YOUR EDGE</div>
+            <div id="performancePanel"><div class="empty-state">Loading performance data...</div></div>
+        </div>
+
         <!-- Community Live Feed -->
         <div class="panel grid-full">
             <div class="panel-header"><span class="icon">&#127760;</span> COMMUNITY LIVE</div>
@@ -444,6 +524,11 @@ async function refreshAll() {
         loadLoadouts(),
         loadTTK(),
         loadServerStatus(),
+        loadBestTimes(),
+        loadServerQuality(),
+        loadSessionDecay(),
+        loadQueuePredict(),
+        loadPerformance(),
         loadCommunityLive(),
         loadTrending(),
     ]);
@@ -720,6 +805,223 @@ async function loadLive() {
         content.innerHTML = html;
     } catch {
         // Silently fail — panel stays in last state
+    }
+}
+
+async function loadBestTimes() {
+    try {
+        const res = await fetch(`/api/intel/best-times/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const hours = d.hours || [];
+        const currentHour = new Date().getHours();
+
+        // Find best window (lowest avg ping)
+        let bestStart = 0, bestPing = Infinity;
+        for (let i = 0; i < hours.length; i++) {
+            const h = hours[i];
+            if (h.avg_ping && h.avg_ping < bestPing) {
+                bestPing = h.avg_ping;
+                bestStart = h.hour;
+            }
+        }
+        const bestEnd = (bestStart + 2) % 24;
+        const fmt = h => { const p = h % 12 || 12; return p + (h < 12 ? 'am' : 'pm'); };
+
+        let html = `<div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#00ff88;margin-bottom:8px;">Best: ${fmt(bestStart)}-${fmt(bestEnd)}</div>`;
+
+        const maxPing = Math.max(...hours.map(h => h.avg_ping || 0), 1);
+        hours.forEach(h => {
+            const hour = h.hour;
+            const ping = h.avg_ping || 0;
+            const wr = h.win_rate;
+            const pct = (ping / maxPing * 100).toFixed(0);
+            const isCurrent = hour === currentHour;
+
+            let color = '#00ff88';
+            if (ping > 80) color = '#ff4455';
+            else if (ping > 50) color = '#ffcc00';
+
+            const dotColor = ping < 50 ? '#00ff88' : ping < 80 ? '#ffcc00' : '#ff4455';
+            const wrStr = wr != null ? `<span style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8b949e;margin-left:6px;">${wr.toFixed(0)}%</span>` : '';
+
+            html += `<div class="hour-bar ${isCurrent ? 'hour-current' : ''}">
+                <span class="hour-label">${hour}</span>
+                <span style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>
+                <div style="flex:1;height:14px;background:#1e2228;border-radius:2px;overflow:hidden;">
+                    <div class="hour-fill" style="width:${pct}%;background:${color};height:100%;"></div>
+                </div>
+                ${wrStr}
+            </div>`;
+        });
+
+        document.getElementById('bestTimesPanel').innerHTML = html;
+    } catch {
+        document.getElementById('bestTimesPanel').innerHTML = '<div class="empty-state">Could not load best times</div>';
+    }
+}
+
+async function loadServerQuality() {
+    try {
+        const res = await fetch('/api/intel/server-quality');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const servers = (d.servers || []).slice(0, 8);
+        if (!servers.length) throw new Error();
+
+        const html = servers.map(s => {
+            let badge, cls;
+            if (s.quality === 'good') { badge = 'GOOD'; cls = 'quality-good'; }
+            else if (s.quality === 'ok') { badge = 'OK'; cls = 'quality-ok'; }
+            else { badge = 'BAD'; cls = 'quality-bad'; }
+
+            return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #1e2228;font-size:0.85rem;">
+                <span class="quality-badge ${cls}">${badge}</span>
+                <span style="color:#fff;font-weight:600;min-width:100px;">${s.server_ip || 'Unknown'}</span>
+                <span style="font-family:'Space Mono',monospace;font-size:0.8rem;color:#c0c0c0;margin-left:auto;">${s.avg_ping || 0}ms</span>
+                <span style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#8b949e;">${s.avg_tick_rate || '?'}Hz</span>
+            </div>`;
+        }).join('');
+
+        document.getElementById('serverQualityPanel').innerHTML = html;
+    } catch {
+        document.getElementById('serverQualityPanel').innerHTML = '<div class="empty-state">Could not load server quality</div>';
+    }
+}
+
+async function loadSessionDecay() {
+    try {
+        const res = await fetch(`/api/intel/session-decay/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const sessions = d.sessions || [];
+        if (!sessions.length) throw new Error();
+
+        // Use latest session with most matches
+        const latest = sessions[sessions.length - 1];
+        const firstKd = (latest.first_half_kd || 0).toFixed(2);
+        const secondKd = (latest.second_half_kd || 0).toFixed(2);
+        const kdDecay = latest.second_half_kd >= latest.first_half_kd;
+        const arrowCls = kdDecay ? 'decay-up' : 'decay-down';
+        const arrowChar = kdDecay ? '&#8599;' : '&#8600;';
+
+        let html = `<div style="margin-bottom:10px;">
+            <div style="font-size:0.8rem;color:#8b949e;margin-bottom:4px;">K/D Trend (last session: ${latest.match_count} matches)</div>
+            <div style="font-size:1.1rem;color:#fff;">
+                First half: <strong>${firstKd}</strong>
+                <span class="decay-arrow ${arrowCls}">${arrowChar}</span>
+                Second half: <strong>${secondKd}</strong>
+            </div>
+        </div>`;
+
+        // Check if ping increased
+        if (latest.ping_increased) {
+            html += `<div style="background:#1a1d24;border-left:3px solid #ffcc00;padding:6px 10px;border-radius:0 4px 4px 0;font-size:0.82rem;color:#ffcc00;">
+                Ping increased during this session — possible ISP throttling
+            </div>`;
+        }
+
+        // Average decay across sessions
+        const decaying = sessions.filter(s => s.kd_decay < -0.2);
+        if (decaying.length > sessions.length / 2) {
+            html += `<div style="background:#1a1d24;border-left:3px solid #ff4455;padding:6px 10px;border-radius:0 4px 4px 0;font-size:0.82rem;color:#ff4455;margin-top:6px;">
+                Your K/D tends to drop in the second half of sessions — take breaks
+            </div>`;
+        }
+
+        document.getElementById('sessionDecayPanel').innerHTML = html;
+    } catch {
+        document.getElementById('sessionDecayPanel').innerHTML = '<div class="empty-state">Not enough session data yet</div>';
+    }
+}
+
+async function loadQueuePredict() {
+    try {
+        const regions = ['us-east', 'us-west', 'eu-west', 'asia'];
+        const results = await Promise.all(regions.map(async r => {
+            try {
+                const res = await fetch(`/api/intel/queue-predict/${r}`);
+                if (!res.ok) return null;
+                return await res.json();
+            } catch { return null; }
+        }));
+
+        const valid = results.filter(r => r !== null);
+        if (!valid.length) throw new Error();
+
+        const currentHour = new Date().getHours();
+        let html = '';
+
+        valid.forEach(r => {
+            html += `<div style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:#00ff88;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${r.region || 'Unknown'}</div>`;
+            const predictions = (r.predictions || []).slice(0, 4);
+            predictions.forEach(p => {
+                const isCurrent = p.hour === currentHour;
+                const timeStr = ((p.hour % 12) || 12) + (p.hour < 12 ? 'am' : 'pm');
+                const queueTime = p.avg_queue_time_s != null ? p.avg_queue_time_s + 's' : '—';
+                html += `<div class="queue-row" style="${isCurrent ? 'background:#00ff8810;border-radius:4px;padding-left:6px;' : ''}">
+                    <span style="font-family:'Space Mono',monospace;font-size:0.8rem;color:${isCurrent ? '#00ff88' : '#8b949e'};width:50px;">${timeStr}${isCurrent ? ' *' : ''}</span>
+                    <span style="color:#fff;font-weight:600;">${queueTime}</span>
+                    <span style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#8b949e;margin-left:auto;">${p.confidence || 0} samples</span>
+                </div>`;
+            });
+        });
+
+        document.getElementById('queuePredictPanel').innerHTML = html;
+    } catch {
+        document.getElementById('queuePredictPanel').innerHTML = '<div class="empty-state">Could not load queue predictions</div>';
+    }
+}
+
+async function loadPerformance() {
+    try {
+        const res = await fetch(`/api/intel/performance/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        const trendData = d.trend || {};
+        const trend = trendData.direction || 'stable';
+        const trendArrow = trend === 'improving' ? '&#8593;' : trend === 'declining' ? '&#8595;' : '&#8596;';
+        const trendColor = trend === 'improving' ? '#00ff88' : trend === 'declining' ? '#ff4455' : '#ffcc00';
+        const trendLabel = trend.charAt(0).toUpperCase() + trend.slice(1);
+
+        let html = `<div style="font-size:0.85rem;margin-bottom:12px;">
+            Trend: <span style="color:${trendColor};font-weight:700;font-size:1.1rem;">${trendArrow} ${trendLabel}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#8b949e;margin-left:8px;">(${d.total_matches || 0} matches)</span>
+        </div>`;
+
+        html += `<div style="display:flex;gap:16px;flex-wrap:wrap;">`;
+
+        // Strengths column
+        html += `<div class="edge-col">
+            <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:#00ff88;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Strengths</div>`;
+        if (d.best_runner) {
+            html += `<div class="edge-item" style="border-left:3px solid #00ff88;">Best Runner: <strong>${d.best_runner.name}</strong> (${d.best_runner.win_rate}% WR)</div>`;
+        }
+        if (d.best_map) {
+            html += `<div class="edge-item" style="border-left:3px solid #00ff88;">Best Map: <strong>${d.best_map.name}</strong> (${d.best_map.win_rate}% WR)</div>`;
+        }
+        html += `</div>`;
+
+        // Weaknesses column
+        html += `<div class="edge-col">
+            <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:#ff4455;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Weaknesses</div>`;
+        if (d.worst_runner) {
+            html += `<div class="edge-item" style="border-left:3px solid #ff4455;">Worst Runner: <strong>${d.worst_runner.name}</strong> (${d.worst_runner.win_rate}% WR)</div>`;
+        }
+        if (d.worst_map) {
+            html += `<div class="edge-item" style="border-left:3px solid #ff4455;">Worst Map: <strong>${d.worst_map.name}</strong> (${d.worst_map.win_rate}% WR)</div>`;
+        }
+        html += `</div>`;
+
+        html += `</div>`;
+
+        document.getElementById('performancePanel').innerHTML = html;
+    } catch {
+        document.getElementById('performancePanel').innerHTML = '<div class="empty-state">Not enough data to analyze performance</div>';
     }
 }
 
