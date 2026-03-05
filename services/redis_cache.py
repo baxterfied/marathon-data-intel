@@ -17,6 +17,9 @@ TTL_AI_INSIGHT = 3600         # 1 hour
 TTL_META = 900                # 15 min
 TTL_RUNNER = 600              # 10 min
 TTL_HISTORY = 3600            # 1 hour
+TTL_SERVER_STATUS = 120       # 2 min
+TTL_PEAK_HOURS = 1800         # 30 min
+TTL_META_SNAPSHOT = 86400     # 24 hours
 
 
 async def connect_redis() -> Optional[aioredis.Redis]:

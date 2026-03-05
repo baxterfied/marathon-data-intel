@@ -212,6 +212,49 @@ SELECT
     ROUND(AVG(duration_s)::numeric, 0) AS avg_duration_s
 FROM matches;
 
+-- server_status_checks (uptime monitoring)
+CREATE TABLE IF NOT EXISTS server_status_checks (
+    id          SERIAL      PRIMARY KEY,
+    endpoint    TEXT        NOT NULL,
+    status_code INT,
+    response_ms FLOAT       NOT NULL DEFAULT 0,
+    is_up       BOOLEAN     NOT NULL DEFAULT false,
+    error       TEXT        NOT NULL DEFAULT '',
+    checked_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_status_endpoint ON server_status_checks (endpoint, checked_at DESC);
+
+-- blog_posts (RSS / announcement tracking)
+CREATE TABLE IF NOT EXISTS blog_posts (
+    id          SERIAL      PRIMARY KEY,
+    url         TEXT        NOT NULL UNIQUE,
+    title       TEXT        NOT NULL DEFAULT '',
+    summary     TEXT        NOT NULL DEFAULT '',
+    published_at TIMESTAMPTZ,
+    is_patch    BOOLEAN     NOT NULL DEFAULT false,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_blog_published ON blog_posts (published_at DESC);
+
+-- match_sessions (auto-detected from network traffic)
+CREATE TABLE IF NOT EXISTS match_sessions (
+    id          SERIAL      PRIMARY KEY,
+    user_hash   TEXT        NOT NULL,
+    server_ip   TEXT        NOT NULL DEFAULT '',
+    region      TEXT        NOT NULL DEFAULT 'unknown',
+    started_at  TIMESTAMPTZ NOT NULL,
+    ended_at    TIMESTAMPTZ,
+    duration_s  INT         NOT NULL DEFAULT 0,
+    peak_ping_ms FLOAT      NOT NULL DEFAULT 0,
+    avg_ping_ms FLOAT       NOT NULL DEFAULT 0,
+    total_packets INT       NOT NULL DEFAULT 0,
+    queue_time_s INT        NOT NULL DEFAULT 0,
+    patch       TEXT        NOT NULL DEFAULT '1.0',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON match_sessions (user_hash, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_region ON match_sessions (region);
+
 -- seed runners (real Marathon roster)
 INSERT INTO runners (name, role, base_hp, base_speed, tier, abilities) VALUES
     ('ASSASSIN', 'stealth', 90, 1.3, 'A', '["Shadow Strike"]'::jsonb),

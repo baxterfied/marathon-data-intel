@@ -56,6 +56,20 @@ class PatchSubmission(BaseModel):
     changes: list[str] = Field(default_factory=list)
 
 
+class MatchSessionSubmission(BaseModel):
+    user_hash: str
+    server_ip: str = ""
+    region: str = "unknown"
+    started_at: str = ""
+    ended_at: str = ""
+    duration_s: int = 0
+    peak_ping_ms: float = 0
+    avg_ping_ms: float = 0
+    total_packets: int = 0
+    queue_time_s: int = 0
+    patch: str = "1.0"
+
+
 def create_app(bot) -> FastAPI:
     app = FastAPI(title="Marathon Data Intel", version="1.0.0")
     app.state.bot = bot
@@ -371,6 +385,281 @@ def create_app(bot) -> FastAPI:
             raise HTTPException(502, f"Bungie API error: {exc.message}")
         return {"memberships": results}
 
+    # -- Server Status --
+    @app.get("/api/server-status")
+    async def server_status():
+        from services.monitor import check_all_endpoints
+        results = await check_all_endpoints()
+        # Store in DB
+        pool = _pool()
+        if pool:
+            for r in results:
+                try:
+                    await pool.execute(
+                        "INSERT INTO server_status_checks (endpoint, status_code, response_ms, is_up, error) "
+                        "VALUES ($1, $2, $3, $4, $5)",
+                        r["endpoint"], r.get("status_code", 0), r["response_ms"], r["is_up"], r.get("error", ""),
+                    )
+                except Exception:
+                    pass
+        return {"status": results}
+
+    @app.get("/api/server-status/history")
+    async def server_status_history(hours: int = 24):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        hours = min(hours, 168)
+        rows = await pool.fetch(
+            "SELECT endpoint, "
+            "COUNT(*) AS total_checks, "
+            "COUNT(*) FILTER (WHERE is_up) AS up_checks, "
+            "ROUND(AVG(response_ms)::numeric, 1) AS avg_response, "
+            "ROUND(MAX(response_ms)::numeric, 1) AS max_response "
+            "FROM server_status_checks "
+            "WHERE checked_at > now() - ($1 || ' hours')::interval "
+            "GROUP BY endpoint ORDER BY endpoint",
+            str(hours),
+        )
+        return {"uptime": [dict(r) for r in rows]}
+
+    # -- Peak Hours --
+    @app.get("/api/peak-hours")
+    async def peak_hours(region: str = ""):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        if region:
+            rows = await pool.fetch(
+                "SELECT EXTRACT(hour FROM recorded_at)::int AS hour, "
+                "COUNT(*) AS samples, "
+                "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
+                "ROUND(AVG(jitter_ms)::numeric, 1) AS avg_jitter, "
+                "ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss "
+                "FROM network_performance WHERE UPPER(region) = UPPER($1) "
+                "GROUP BY hour ORDER BY hour",
+                region,
+            )
+        else:
+            rows = await pool.fetch(
+                "SELECT EXTRACT(hour FROM recorded_at)::int AS hour, "
+                "COUNT(*) AS samples, "
+                "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
+                "ROUND(AVG(jitter_ms)::numeric, 1) AS avg_jitter, "
+                "ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss "
+                "FROM network_performance "
+                "GROUP BY hour ORDER BY hour"
+            )
+        return {"peak_hours": [dict(r) for r in rows]}
+
+    # -- TTK Calculator --
+    @app.get("/api/ttk/{weapon_name}")
+    async def ttk_calc(weapon_name: str, hp: int = 100):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        row = await pool.fetchrow(
+            "SELECT * FROM weapons WHERE UPPER(name) = UPPER($1)", weapon_name
+        )
+        if not row:
+            row = await pool.fetchrow(
+                "SELECT * FROM weapons WHERE UPPER(name) LIKE UPPER($1) LIMIT 1",
+                f"%{weapon_name}%",
+            )
+        if not row:
+            raise HTTPException(404, "Weapon not found")
+
+        damage = row["damage"]
+        fire_rate = row["fire_rate"]
+        mag_size = row["mag_size"]
+        reload_s = row["reload_s"]
+
+        if damage <= 0 or fire_rate <= 0:
+            return {"weapon": row["name"], "error": "Missing damage/fire rate data"}
+
+        shots_to_kill = -(-hp // int(damage))
+        time_between = 60.0 / fire_rate
+        ttk_ms = (shots_to_kill - 1) * time_between * 1000
+        dps = damage * fire_rate / 60
+
+        runner_hps = [85, 90, 100, 110, 140]
+        breakdown = {}
+        for rhp in runner_hps:
+            stk = -(-rhp // int(damage))
+            t = (stk - 1) * time_between * 1000
+            breakdown[str(rhp)] = {"shots": stk, "ttk_ms": round(t, 1)}
+
+        return {
+            "weapon": row["name"],
+            "target_hp": hp,
+            "shots_to_kill": shots_to_kill,
+            "ttk_ms": round(ttk_ms, 1),
+            "dps": round(dps, 1),
+            "needs_reload": shots_to_kill > mag_size if mag_size > 0 else False,
+            "runner_breakdown": breakdown,
+        }
+
+    # -- Streaks --
+    @app.get("/api/streaks/{user_hash}")
+    async def streaks(user_hash: str):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT result, runner_name, created_at FROM matches "
+            "WHERE user_hash = $1 ORDER BY created_at DESC LIMIT 50",
+            user_hash,
+        )
+        if not rows:
+            raise HTTPException(404, "No matches found")
+
+        # Current streak
+        streak_type = rows[0]["result"]
+        current_streak = 0
+        for r in rows:
+            if r["result"] == streak_type:
+                current_streak += 1
+            else:
+                break
+
+        # Longest streaks
+        max_win = max_loss = current_run = 1
+        for i in range(1, len(rows)):
+            if rows[i]["result"] == rows[i - 1]["result"]:
+                current_run += 1
+            else:
+                if rows[i - 1]["result"] == "win":
+                    max_win = max(max_win, current_run)
+                elif rows[i - 1]["result"] == "loss":
+                    max_loss = max(max_loss, current_run)
+                current_run = 1
+        if rows[-1]["result"] == "win":
+            max_win = max(max_win, current_run)
+        elif rows[-1]["result"] == "loss":
+            max_loss = max(max_loss, current_run)
+
+        return {
+            "user_hash": user_hash,
+            "current_streak": {"type": streak_type, "count": current_streak},
+            "best_win_streak": max_win,
+            "worst_loss_streak": max_loss,
+            "last_10": [r["result"] for r in rows[:10]],
+        }
+
+    # -- Match Sessions --
+    @app.post("/api/sessions")
+    async def submit_session(session: MatchSessionSubmission):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        from datetime import datetime, timezone
+        started = datetime.fromisoformat(session.started_at) if session.started_at else datetime.now(timezone.utc)
+        ended = datetime.fromisoformat(session.ended_at) if session.ended_at else None
+        await pool.execute(
+            "INSERT INTO match_sessions (user_hash, server_ip, region, started_at, ended_at, "
+            "duration_s, peak_ping_ms, avg_ping_ms, total_packets, queue_time_s, patch) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+            session.user_hash, session.server_ip, session.region, started, ended,
+            session.duration_s, session.peak_ping_ms, session.avg_ping_ms,
+            session.total_packets, session.queue_time_s, session.patch,
+        )
+        return {"status": "recorded"}
+
+    @app.get("/api/sessions")
+    async def list_sessions(region: str = "", limit: int = 50):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        limit = min(limit, 200)
+        if region:
+            rows = await pool.fetch(
+                "SELECT * FROM match_sessions WHERE UPPER(region) = UPPER($1) "
+                "ORDER BY started_at DESC LIMIT $2",
+                region, limit,
+            )
+        else:
+            rows = await pool.fetch(
+                "SELECT * FROM match_sessions ORDER BY started_at DESC LIMIT $1", limit
+            )
+        return {"sessions": [dict(r) for r in rows]}
+
+    @app.get("/api/queue-times")
+    async def queue_times():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT region, "
+            "ROUND(AVG(queue_time_s)::numeric, 0) AS avg_queue, "
+            "ROUND(MIN(queue_time_s)::numeric, 0) AS min_queue, "
+            "ROUND(MAX(queue_time_s)::numeric, 0) AS max_queue, "
+            "COUNT(*) AS samples "
+            "FROM match_sessions WHERE queue_time_s > 0 "
+            "GROUP BY region ORDER BY avg_queue"
+        )
+        return {"queue_times": [dict(r) for r in rows]}
+
+    # -- Blog Posts --
+    @app.get("/api/blog")
+    async def list_blog_posts(limit: int = 20):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        limit = min(limit, 100)
+        rows = await pool.fetch(
+            "SELECT * FROM blog_posts ORDER BY created_at DESC LIMIT $1", limit
+        )
+        return {"posts": [dict(r) for r in rows]}
+
+    # -- Map Stats --
+    @app.get("/api/maps")
+    async def map_stats():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT map_name, "
+            "COUNT(*) AS total, "
+            "COUNT(*) FILTER (WHERE result = 'win') AS wins, "
+            "ROUND(COUNT(*) FILTER (WHERE result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS win_rate, "
+            "ROUND(AVG(kills)::numeric, 1) AS avg_kills, "
+            "ROUND(AVG(deaths)::numeric, 1) AS avg_deaths, "
+            "ROUND(AVG(damage)::numeric, 0) AS avg_damage "
+            "FROM matches GROUP BY map_name ORDER BY total DESC"
+        )
+        return {"maps": [dict(r) for r in rows]}
+
+    # -- Server Blacklist --
+    @app.get("/api/servers/problems")
+    async def problem_servers():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT server_ip, region, "
+            "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
+            "ROUND(AVG(jitter_ms)::numeric, 1) AS avg_jitter, "
+            "ROUND(AVG(packet_loss)::numeric, 2) AS avg_loss, "
+            "COUNT(*) AS samples "
+            "FROM network_performance WHERE server_ip != '' "
+            "GROUP BY server_ip, region "
+            "HAVING COUNT(*) >= 3 AND (AVG(packet_loss) > 1 OR AVG(avg_ping_ms) > 100 OR AVG(jitter_ms) > 20) "
+            "ORDER BY AVG(packet_loss) DESC LIMIT 10"
+        )
+        return {"problem_servers": [dict(r) for r in rows]}
+
+    # -- Meta Shift --
+    @app.get("/api/meta/shifts")
+    async def meta_shifts():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT * FROM ai_insights WHERE insight_type = 'meta_shift' "
+            "ORDER BY created_at DESC LIMIT 10"
+        )
+        return {"shifts": [dict(r) for r in rows]}
+
     # -- HTML pages served from public/ --
     @app.get("/")
     async def index():
@@ -389,6 +678,13 @@ def create_app(bot) -> FastAPI:
     @app.get("/network")
     async def network_page():
         f = PUBLIC_DIR / "network.html"
+        if f.exists():
+            return FileResponse(f)
+        raise HTTPException(404)
+
+    @app.get("/submit")
+    async def submit_page():
+        f = PUBLIC_DIR / "submit.html"
         if f.exists():
             return FileResponse(f)
         raise HTTPException(404)

@@ -14,10 +14,13 @@ Usage:
   python netcapture.py --api-url https://marathon.straightfirefood.blog --user-hash myname123
 
 The agent will:
-  1. Detect Marathon game traffic on UDP ports 3074/3097
+  1. Detect Marathon game traffic on UDP ports 63006-63059
   2. Track server IPs and measure RTT from packet timing
   3. Calculate ping, jitter, and packet loss per server
-  4. Submit snapshots to /api/network every 60 seconds
+  4. Auto-detect match start/end from traffic patterns
+  5. Track matchmaking queue times
+  6. Submit snapshots to /api/network every 60 seconds
+  7. Submit match session data to /api/sessions on match end
 """
 
 import argparse
@@ -30,6 +33,8 @@ import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
 from statistics import mean, stdev
 
 logging.basicConfig(
@@ -47,6 +52,71 @@ SUBMIT_INTERVAL = 60
 MIN_PACKETS = 10
 # Packet loss window (seconds) — expect at least 1 pkt/sec from active server
 LOSS_WINDOW = 10
+
+# Match detection thresholds
+MATCH_START_PPS = 20       # Packets/sec to consider a match started
+MATCH_END_SILENCE = 10     # Seconds of low traffic to consider match ended
+MATCH_MIN_DURATION = 30    # Minimum match duration (seconds) to be valid
+MATCH_LOW_PPS = 3          # Below this PPS, match is considered over
+QUEUE_DETECT_PPS = 2       # Low steady traffic = matchmaking queue
+
+
+class MatchState(Enum):
+    IDLE = "idle"
+    QUEUING = "queuing"
+    IN_MATCH = "in_match"
+
+
+@dataclass
+class MatchSession:
+    """Tracks a detected match session."""
+    server_ip: str
+    state: MatchState = MatchState.IDLE
+    queue_start: float = 0.0
+    match_start: float = 0.0
+    match_end: float = 0.0
+    peak_pps: float = 0.0
+    total_packets: int = 0
+    peak_ping_ms: float = 0.0
+    avg_ping_ms: float = 0.0
+    _recent_pps: list[float] = field(default_factory=list)
+
+    def update_pps(self, current_pps: float) -> None:
+        self._recent_pps.append(current_pps)
+        if len(self._recent_pps) > 10:
+            self._recent_pps = self._recent_pps[-10:]
+        self.peak_pps = max(self.peak_pps, current_pps)
+
+    @property
+    def avg_recent_pps(self) -> float:
+        return mean(self._recent_pps) if self._recent_pps else 0
+
+    @property
+    def duration_s(self) -> int:
+        if self.match_start and self.match_end:
+            return int(self.match_end - self.match_start)
+        return 0
+
+    @property
+    def queue_time_s(self) -> int:
+        if self.queue_start and self.match_start:
+            return int(self.match_start - self.queue_start)
+        return 0
+
+    def to_session_dict(self, user_hash: str, region: str = "unknown", patch: str = "1.0") -> dict:
+        return {
+            "user_hash": user_hash,
+            "server_ip": self.server_ip,
+            "region": region,
+            "started_at": datetime.fromtimestamp(self.match_start, tz=timezone.utc).isoformat() if self.match_start else "",
+            "ended_at": datetime.fromtimestamp(self.match_end, tz=timezone.utc).isoformat() if self.match_end else "",
+            "duration_s": self.duration_s,
+            "peak_ping_ms": self.peak_ping_ms,
+            "avg_ping_ms": self.avg_ping_ms,
+            "total_packets": self.total_packets,
+            "queue_time_s": self.queue_time_s,
+            "patch": patch,
+        }
 
 
 @dataclass
@@ -254,6 +324,37 @@ async def submit_stats(api_url: str, payload: dict) -> bool:
     return False
 
 
+async def submit_session(api_url: str, payload: dict) -> bool:
+    """Submit a match session to the Marathon Intel API."""
+    if not api_url:
+        return False
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(f"{api_url}/api/sessions", json=payload)
+            if resp.status_code == 200:
+                return True
+            log.warning("Session API returned %d: %s", resp.status_code, resp.text[:200])
+    except ImportError:
+        import urllib.request
+        import urllib.error
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{api_url}/api/sessions",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status == 200
+        except urllib.error.URLError as exc:
+            log.warning("Session submit failed: %s", exc)
+    except Exception as exc:
+        log.warning("Session submit failed: %s", exc)
+    return False
+
+
 async def run_capture(
     tshark: str,
     interface: str,
@@ -294,11 +395,15 @@ async def run_capture(
     )
 
     servers: dict[str, ServerStats] = {}
+    match_sessions: dict[str, MatchSession] = {}
+    pps_counters: dict[str, int] = defaultdict(int)
+    last_pps_check = time.time()
     last_submit = time.time()
     local_ips = _get_local_ips()
 
     log.info("Local IPs: %s", ", ".join(local_ips))
     log.info("Waiting for Marathon game traffic...")
+    log.info("Match auto-detection: ENABLED")
 
     try:
         while True:
@@ -338,9 +443,80 @@ async def run_capture(
                 log.info("New server detected: %s (region: %s)", server_ip, guess_region(server_ip))
 
             servers[server_ip].record_packet(ts, pkt_len)
+            pps_counters[server_ip] += 1
 
-            # Submit periodically
+            # Initialize match session tracker for this server
+            if server_ip not in match_sessions:
+                match_sessions[server_ip] = MatchSession(server_ip=server_ip)
+
+            ms = match_sessions[server_ip]
+            ms.total_packets += 1
+
+            # PPS check every second for match detection
             now = time.time()
+            if now - last_pps_check >= 1.0:
+                for ip, count in pps_counters.items():
+                    if ip in match_sessions:
+                        session = match_sessions[ip]
+                        session.update_pps(count)
+
+                        # State machine for match detection
+                        if session.state == MatchState.IDLE:
+                            if QUEUE_DETECT_PPS <= count < MATCH_START_PPS:
+                                session.state = MatchState.QUEUING
+                                session.queue_start = now
+                                log.info("[%s] Queue detected (PPS: %d)", ip, count)
+                            elif count >= MATCH_START_PPS:
+                                session.state = MatchState.IN_MATCH
+                                session.match_start = now
+                                log.info("[%s] MATCH STARTED (PPS: %d)", ip, count)
+
+                        elif session.state == MatchState.QUEUING:
+                            if count >= MATCH_START_PPS:
+                                session.state = MatchState.IN_MATCH
+                                session.match_start = now
+                                queue_time = int(now - session.queue_start) if session.queue_start else 0
+                                log.info("[%s] MATCH STARTED after %ds queue (PPS: %d)", ip, queue_time, count)
+
+                        elif session.state == MatchState.IN_MATCH:
+                            # Update ping stats
+                            srv = servers.get(ip)
+                            if srv:
+                                ping = srv.avg_ping_ms
+                                session.peak_ping_ms = max(session.peak_ping_ms, ping)
+                                session.avg_ping_ms = ping
+
+                            if count < MATCH_LOW_PPS:
+                                elapsed = now - session.match_start if session.match_start else 0
+                                if elapsed >= MATCH_MIN_DURATION:
+                                    session.match_end = now
+                                    region = guess_region(ip)
+                                    log.info(
+                                        "[%s] MATCH ENDED — Duration: %ds | Queue: %ds | Packets: %d | Region: %s",
+                                        ip, session.duration_s, session.queue_time_s,
+                                        session.total_packets, region,
+                                    )
+                                    # Submit session
+                                    payload = session.to_session_dict(user_hash, region=region, patch=patch)
+                                    if api_url:
+                                        success = await submit_session(api_url, payload)
+                                        if success:
+                                            log.info("  -> Session submitted to API")
+                                        else:
+                                            log.warning("  -> Session API submission failed")
+                                    else:
+                                        log.info("  -> Session (dry run): %s", json.dumps(payload, indent=2))
+
+                                    # Reset for next match
+                                    match_sessions[ip] = MatchSession(server_ip=ip)
+                                else:
+                                    # Too short, probably just a loading screen
+                                    session.state = MatchState.IDLE
+
+                pps_counters.clear()
+                last_pps_check = now
+
+            # Submit network stats periodically
             if now - last_submit >= SUBMIT_INTERVAL:
                 await _submit_all(servers, api_url, user_hash, patch)
                 last_submit = now
@@ -357,6 +533,17 @@ async def run_capture(
         # Final submit
         if servers:
             await _submit_all(servers, api_url, user_hash, patch)
+
+        # Submit any in-progress match sessions
+        for ip, session in match_sessions.items():
+            if session.state == MatchState.IN_MATCH and session.match_start:
+                session.match_end = time.time()
+                if session.duration_s >= MATCH_MIN_DURATION:
+                    region = guess_region(ip)
+                    payload = session.to_session_dict(user_hash, region=region, patch=patch)
+                    if api_url:
+                        await submit_session(api_url, payload)
+                    log.info("Final session submitted for %s (%ds)", ip, session.duration_s)
 
 
 async def _submit_all(
@@ -446,6 +633,11 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Print stats to console without submitting to API",
+    )
+    parser.add_argument(
+        "--no-match-detect",
+        action="store_true",
+        help="Disable automatic match detection",
     )
     args = parser.parse_args()
 

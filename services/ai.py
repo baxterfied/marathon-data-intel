@@ -224,3 +224,28 @@ async def generate_patch_analysis(client: Optional[anthropic.AsyncAnthropic], pa
         "and predicted tier changes. Keep under 1500 characters for Discord."
     )
     return await generate_insight(client, system, patch_data, max_tokens=1500)
+
+
+META_SHIFT_SYSTEM = """\
+You are Marathon Intel's meta shift detector. Compare the previous meta snapshot \
+to the current data and identify significant changes. Focus on:
+- Runners whose win rate changed by >3%
+- Weapons whose pick rate changed by >5%
+- New dominant loadouts or falling-off compositions
+Format as a short Discord alert (under 1000 chars) with the most impactful shifts first.
+If no significant changes, say so briefly.
+"""
+
+
+async def generate_meta_shift_alert(client: Optional[anthropic.AsyncAnthropic], old_data: str, new_data: str) -> Optional[str]:
+    prompt = f"PREVIOUS SNAPSHOT:\n{old_data}\n\nCURRENT SNAPSHOT:\n{new_data}"
+    return await generate_insight(client, META_SHIFT_SYSTEM, prompt, max_tokens=1000)
+
+
+async def generate_blog_summary(client: Optional[anthropic.AsyncAnthropic], title: str, content: str) -> Optional[str]:
+    system = (
+        "You are Marathon Intel. Summarize this Bungie blog post for the Marathon "
+        "community in 2-3 sentences. If it contains patch notes or balance changes, "
+        "flag them specifically. Keep under 500 characters."
+    )
+    return await generate_insight(client, system, f"Title: {title}\n\nContent:\n{content}", max_tokens=500)
