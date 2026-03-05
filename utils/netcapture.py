@@ -38,8 +38,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("netcapture")
 
-# Bungie game ports (UDP)
-GAME_PORTS = {3074, 3097}
+# Marathon game ports (UDP) — main range 63006-63059, plus auxiliary ports
+GAME_PORTS_RANGE = (63006, 63059)
+GAME_PORTS_EXTRA = {53932, 55575, 57787}
 # How often to submit a snapshot (seconds)
 SUBMIT_INTERVAL = 60
 # Minimum packets to consider a server active
@@ -262,9 +263,11 @@ async def run_capture(
 ) -> None:
     """Main capture loop — runs tshark and processes packets."""
 
-    # Build capture filter for Bungie game ports
-    port_filter = " or ".join(f"udp port {p}" for p in GAME_PORTS)
-    capture_filter = f"udp and ({port_filter})"
+    # Build capture filter for Marathon game ports
+    lo, hi = GAME_PORTS_RANGE
+    range_filter = f"udp portrange {lo}-{hi}"
+    extra_filter = " or ".join(f"udp port {p}" for p in GAME_PORTS_EXTRA)
+    capture_filter = f"{range_filter} or {extra_filter}"
 
     cmd = [
         tshark,
@@ -282,7 +285,7 @@ async def run_capture(
     ]
 
     log.info("Starting capture: %s", " ".join(cmd))
-    log.info("Listening for Marathon traffic on UDP ports %s...", ", ".join(str(p) for p in GAME_PORTS))
+    log.info("Listening for Marathon traffic on UDP ports %d-%d + %s...", lo, hi, ", ".join(str(p) for p in GAME_PORTS_EXTRA))
 
     process = await asyncio.create_subprocess_exec(
         *cmd,
