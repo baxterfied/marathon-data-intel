@@ -443,9 +443,7 @@ async def run_capture_scapy(
     log.info("Capture backend: scapy")
 
     lo, hi = GAME_PORTS_RANGE
-    bpf = f"udp portrange {lo}-{hi}"
-    for p in GAME_PORTS_EXTRA:
-        bpf += f" or udp port {p}"
+    bpf = "udp"
 
     # Packet queue for async processing
     pkt_queue: asyncio.Queue = asyncio.Queue()
