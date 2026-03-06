@@ -97,6 +97,12 @@ if ([string]::IsNullOrWhiteSpace($userHash)) {
 $launcherPath = Join-Path $INSTALL_DIR "Start-Capture.bat"
 $launcherContent = @"
 @echo off
+:: Auto-elevate to Administrator
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
+    exit /b
+)
 title Marathon Intel - Capture Agent
 echo.
 echo   Marathon Intel - Network Capture Agent
@@ -118,7 +124,7 @@ Write-Host "  Files installed to: $INSTALL_DIR" -ForegroundColor Cyan
 Write-Host "  Your gamertag: $userHash" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  To run the agent:" -ForegroundColor White
-Write-Host "    1. Open $launcherPath as Admin" -ForegroundColor White
+Write-Host "    1. Double-click $launcherPath" -ForegroundColor White
 Write-Host "    2. Play Marathon normally" -ForegroundColor White
 Write-Host "    3. Data captures automatically" -ForegroundColor White
 Write-Host ""
