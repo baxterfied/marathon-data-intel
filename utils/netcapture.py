@@ -121,6 +121,20 @@ class MatchState(Enum):
 
 
 @dataclass
+class RelayHop:
+    """A relay server seen during matchmaking queue."""
+    ip: str
+    region: str
+    first_seen: float
+    last_seen: float
+    ping_ms: float = 0.0
+
+    @property
+    def duration_s(self) -> int:
+        return int(self.last_seen - self.first_seen)
+
+
+@dataclass
 class MatchSession:
     """Tracks a detected match session."""
     server_ip: str
@@ -133,6 +147,8 @@ class MatchSession:
     peak_ping_ms: float = 0.0
     avg_ping_ms: float = 0.0
     _recent_pps: list[float] = field(default_factory=list)
+    relay_hops: list[RelayHop] = field(default_factory=list)
+    _current_relay_ip: str = ""
 
     def update_pps(self, current_pps: float) -> None:
         self._recent_pps.append(current_pps)
@@ -143,6 +159,19 @@ class MatchSession:
     @property
     def avg_recent_pps(self) -> float:
         return mean(self._recent_pps) if self._recent_pps else 0
+
+    def track_relay(self, ip: str, ts: float, ping_ms: float = 0.0) -> bool:
+        """Track a relay server during queue. Returns True if relay changed."""
+        region = guess_region(ip)
+        if ip == self._current_relay_ip:
+            if self.relay_hops:
+                self.relay_hops[-1].last_seen = ts
+                if ping_ms > 0:
+                    self.relay_hops[-1].ping_ms = ping_ms
+            return False
+        self._current_relay_ip = ip
+        self.relay_hops.append(RelayHop(ip=ip, region=region, first_seen=ts, last_seen=ts, ping_ms=ping_ms))
+        return True
 
     @property
     def duration_s(self) -> int:
@@ -168,28 +197,73 @@ class MatchSession:
             "avg_ping_ms": self.avg_ping_ms,
             "total_packets": self.total_packets,
             "queue_time_s": self.queue_time_s,
+            "relay_hops": [
+                {"ip": h.ip, "region": h.region, "duration_s": h.duration_s, "ping_ms": h.ping_ms}
+                for h in self.relay_hops
+            ],
             "patch": patch,
         }
 
 
 @dataclass
 class ServerStats:
-    """Tracks per-server network metrics from captured packets."""
+    """Tracks per-server network metrics from captured packets.
+
+    RTT measurement: when we send a packet to the server, we record the
+    timestamp. When the next packet arrives FROM the server, the delta is
+    one round-trip sample. This gives us true RTT — not just inter-packet
+    arrival intervals.
+
+    Tick rate: measured from server→client packet cadence (inbound intervals).
+    """
     ip: str
     first_seen: float = 0.0
     last_seen: float = 0.0
     packet_count: int = 0
     bytes_total: int = 0
-    intervals: list[float] = field(default_factory=list)
+    # Inbound (server→client) intervals for tick rate
+    _inbound_intervals: list[float] = field(default_factory=list)
+    _last_inbound_ts: float = 0.0
+    # RTT samples from outbound→inbound timing
+    _rtt_samples: list[float] = field(default_factory=list)
+    _last_outbound_ts: float = 0.0
+    _awaiting_reply: bool = False
+    # Packet loss buckets
     buckets: dict[int, int] = field(default_factory=lambda: defaultdict(int))
 
-    def record_packet(self, ts: float, size: int) -> None:
+    def record_outbound(self, ts: float, size: int) -> None:
+        """Record a packet sent TO this server (client→server)."""
+        self._last_outbound_ts = ts
+        self._awaiting_reply = True
+        self._record_common(ts, size)
+
+    def record_inbound(self, ts: float, size: int) -> None:
+        """Record a packet received FROM this server (server→client)."""
+        # RTT: time from our last outbound to this inbound
+        if self._awaiting_reply and self._last_outbound_ts > 0:
+            rtt = ts - self._last_outbound_ts
+            # Filter sane RTT range: 1ms to 500ms
+            if 0.001 <= rtt <= 0.5:
+                self._rtt_samples.append(rtt)
+                # Keep a rolling window to stay current
+                if len(self._rtt_samples) > 500:
+                    self._rtt_samples = self._rtt_samples[-500:]
+            self._awaiting_reply = False
+
+        # Inbound intervals for tick rate
+        if self._last_inbound_ts > 0:
+            interval = ts - self._last_inbound_ts
+            if interval > 0:
+                self._inbound_intervals.append(interval)
+                if len(self._inbound_intervals) > 500:
+                    self._inbound_intervals = self._inbound_intervals[-500:]
+        self._last_inbound_ts = ts
+
+        self._record_common(ts, size)
+
+    def _record_common(self, ts: float, size: int) -> None:
         if self.first_seen == 0:
             self.first_seen = ts
-        if self.last_seen > 0:
-            interval = ts - self.last_seen
-            if interval > 0:
-                self.intervals.append(interval)
         self.last_seen = ts
         self.packet_count += 1
         self.bytes_total += size
@@ -198,18 +272,34 @@ class ServerStats:
 
     @property
     def avg_ping_ms(self) -> float:
-        if len(self.intervals) < 2:
+        """True RTT from outbound→inbound packet timing."""
+        if len(self._rtt_samples) < 2:
+            # Fall back to inbound intervals if no RTT data yet
+            if len(self._inbound_intervals) < 2:
+                return 0.0
+            filtered = [i for i in self._inbound_intervals if i < 1.0]
+            return round(mean(filtered) * 1000, 1) if filtered else 0.0
+        return round(mean(self._rtt_samples) * 1000, 1)
+
+    @property
+    def min_ping_ms(self) -> float:
+        if not self._rtt_samples:
             return 0.0
-        filtered = [i for i in self.intervals if i < 1.0]
-        if not filtered:
+        return round(min(self._rtt_samples) * 1000, 1)
+
+    @property
+    def max_ping_ms(self) -> float:
+        if not self._rtt_samples:
             return 0.0
-        return round(mean(filtered) * 1000, 1)
+        return round(max(self._rtt_samples) * 1000, 1)
 
     @property
     def jitter_ms(self) -> float:
-        if len(self.intervals) < 3:
+        """Jitter from RTT variance (or inbound intervals as fallback)."""
+        samples = self._rtt_samples if len(self._rtt_samples) >= 3 else self._inbound_intervals
+        if len(samples) < 3:
             return 0.0
-        filtered = [i for i in self.intervals if i < 1.0]
+        filtered = [i for i in samples if i < 1.0]
         if len(filtered) < 3:
             return 0.0
         return round(stdev(filtered) * 1000, 1)
@@ -231,15 +321,20 @@ class ServerStats:
 
     @property
     def tick_rate(self) -> int:
-        if len(self.intervals) < 5:
+        """Server tick rate estimated from inbound packet cadence."""
+        if len(self._inbound_intervals) < 5:
             return 0
-        filtered = [i for i in self.intervals if 0.001 < i < 0.5]
+        filtered = [i for i in self._inbound_intervals if 0.001 < i < 0.5]
         if not filtered:
             return 0
         avg = mean(filtered)
         if avg <= 0:
             return 0
         return round(1.0 / avg)
+
+    @property
+    def rtt_sample_count(self) -> int:
+        return len(self._rtt_samples)
 
     def to_dict(self, user_hash: str, region: str = "unknown", patch: str = "1.0") -> dict:
         return {
@@ -248,9 +343,12 @@ class ServerStats:
             "region": region,
             "map_name": "unknown",
             "avg_ping_ms": self.avg_ping_ms,
+            "min_ping_ms": self.min_ping_ms,
+            "max_ping_ms": self.max_ping_ms,
             "jitter_ms": self.jitter_ms,
             "packet_loss": self.packet_loss_pct,
             "tick_rate": self.tick_rate,
+            "rtt_samples": self.rtt_sample_count,
             "patch": patch,
         }
 
@@ -259,7 +357,11 @@ class ServerStats:
         self.last_seen = 0.0
         self.packet_count = 0
         self.bytes_total = 0
-        self.intervals.clear()
+        self._inbound_intervals.clear()
+        self._last_inbound_ts = 0.0
+        self._rtt_samples.clear()
+        self._last_outbound_ts = 0.0
+        self._awaiting_reply = False
         self.buckets.clear()
 
 
@@ -615,11 +717,13 @@ async def _process_packets(
 
             continue
 
-        # Determine remote server IP
+        # Determine remote server IP and packet direction
         if src_ip in local_ips:
             server_ip = dst_ip
+            is_outbound = True
         elif dst_ip in local_ips:
             server_ip = src_ip
+            is_outbound = False
         else:
             continue
 
@@ -628,7 +732,10 @@ async def _process_packets(
             servers[server_ip] = ServerStats(ip=server_ip)
             log.info("New server detected: %s (region: %s)", server_ip, guess_region(server_ip))
 
-        servers[server_ip].record_packet(ts, pkt_len)
+        if is_outbound:
+            servers[server_ip].record_outbound(ts, pkt_len)
+        else:
+            servers[server_ip].record_inbound(ts, pkt_len)
         pps_counters[server_ip] += 1
 
         if server_ip not in match_sessions:
@@ -692,21 +799,37 @@ async def _process_packets(
 
 def _match_state_machine(session, ip, count, now, servers, match_sessions, user_hash, api_url, patch, on_match_end):
     """State transitions for match detection (IDLE/QUEUING only — IN_MATCH handled by caller)."""
+    region = guess_region(ip)
+    srv = servers.get(ip)
+    ping_ms = srv.avg_ping_ms if srv else 0.0
+
     if session.state == MatchState.IDLE:
         if QUEUE_DETECT_PPS <= count < MATCH_START_PPS:
             session.state = MatchState.QUEUING
             session.queue_start = now
-            log.info("[%s] Queue detected (PPS: %d)", ip, count)
+            session.relay_hops.clear()
+            session.track_relay(ip, now, ping_ms)
+            log.info("[%s] Queue detected — Relay: %s (%s) | Ping: %sms | PPS: %d",
+                     ip, ip, region, ping_ms, count)
         elif count >= MATCH_START_PPS:
             session.state = MatchState.IN_MATCH
             session.match_start = now
             log.info("[%s] MATCH STARTED (PPS: %d)", ip, count)
     elif session.state == MatchState.QUEUING:
+        relay_changed = session.track_relay(ip, now, ping_ms)
+        if relay_changed:
+            hop_num = len(session.relay_hops)
+            queue_elapsed = int(now - session.queue_start) if session.queue_start else 0
+            log.info("[%s] Relay hop #%d — %s (%s) | Ping: %sms | Queue: %ds",
+                     ip, hop_num, ip, region, ping_ms, queue_elapsed)
         if count >= MATCH_START_PPS:
             session.state = MatchState.IN_MATCH
             session.match_start = now
             queue_time = int(now - session.queue_start) if session.queue_start else 0
-            log.info("[%s] MATCH STARTED after %ds queue (PPS: %d)", ip, queue_time, count)
+            matched_relay = session.relay_hops[-1] if session.relay_hops else None
+            matched_region = matched_relay.region if matched_relay else region
+            log.info("[%s] MATCH STARTED after %ds queue — Matched on %s (%s) | %d relay hop(s) | PPS: %d",
+                     ip, queue_time, ip, matched_region, len(session.relay_hops), count)
 
 
 def _build_live_state(servers, match_sessions, now, session_matches, session_wins, session_losses) -> dict:
@@ -725,6 +848,13 @@ def _build_live_state(servers, match_sessions, now, session_matches, session_win
                 active_server = srv
                 break
 
+    relay_hops_data = []
+    if active_session and active_session.relay_hops:
+        relay_hops_data = [
+            {"ip": h.ip, "region": h.region, "duration_s": h.duration_s, "ping_ms": h.ping_ms}
+            for h in active_session.relay_hops
+        ]
+
     return {
         "state": active_session.state.value if active_session else "idle",
         "server_ip": active_session.server_ip if active_session else "",
@@ -736,6 +866,7 @@ def _build_live_state(servers, match_sessions, now, session_matches, session_win
         "match_duration_s": int(now - active_session.match_start) if active_session and active_session.match_start and active_session.state == MatchState.IN_MATCH else 0,
         "queue_time_s": int(now - active_session.queue_start) if active_session and active_session.queue_start and active_session.state == MatchState.QUEUING else 0,
         "packets_per_sec": active_session.avg_recent_pps if active_session else 0,
+        "relay_hops": relay_hops_data,
         "session_matches": session_matches,
         "session_wins": session_wins,
         "session_losses": session_losses,
@@ -761,9 +892,12 @@ async def _submit_all(
     for ip, stats in active.items():
         region = guess_region(ip)
         payload = stats.to_dict(user_hash, region=region, patch=patch)
+        rtt_info = ""
+        if stats.rtt_sample_count > 0:
+            rtt_info = f" (RTT: {payload['min_ping_ms']}-{payload['max_ping_ms']}ms, {stats.rtt_sample_count} samples)"
         log.info(
-            "Server %s [%s]: ping=%sms jitter=%sms loss=%s%% tick=%dHz (%d pkts)",
-            ip, region, payload["avg_ping_ms"], payload["jitter_ms"],
+            "Server %s [%s]: ping=%sms%s jitter=%sms loss=%s%% tick=%dHz (%d pkts)",
+            ip, region, payload["avg_ping_ms"], rtt_info, payload["jitter_ms"],
             payload["packet_loss"], payload["tick_rate"], stats.packet_count,
         )
         success = await submit_stats(api_url, payload)
@@ -847,6 +981,10 @@ Examples:
     log.info("Start Marathon and play. Data captures automatically.")
     log.info("Press Ctrl+C to stop.")
     log.info("")
+    if api_url:
+        log.info("Your live dashboard:  %s/me?user=%s", api_url, args.user_hash)
+        log.info("Stream overlay:       %s/overlay/%s", api_url, args.user_hash)
+        log.info("")
 
     try:
         if backend == "scapy":
