@@ -745,7 +745,10 @@ def create_app(bot) -> FastAPI:
             raise HTTPException(429, "Rate limited.")
         redis = _redis()
         if redis:
-            await cache_set(redis, f"marathon:live:{user_hash}", {
+            # Use user_hash from JSON body (status.user_hash) — the URL path
+            # param may be truncated if gamertag contains '#' (treated as fragment)
+            live_key = status.user_hash or user_hash
+            await cache_set(redis, f"marathon:live:{live_key}", {
                 "state": status.state,
                 "server_ip": status.server_ip,
                 "region": status.region,

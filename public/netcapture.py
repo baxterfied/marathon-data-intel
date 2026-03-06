@@ -347,7 +347,8 @@ async def submit_stats(api_url: str, payload: dict) -> bool:
 
 
 async def push_live_status(api_url: str, user_hash: str, status: dict) -> None:
-    await _api_post(api_url, f"/api/live/{user_hash}", {"user_hash": user_hash, **status}, timeout=5)
+    from urllib.parse import quote
+    await _api_post(api_url, f"/api/live/{quote(user_hash, safe='')}", {"user_hash": user_hash, **status}, timeout=5)
 
 
 async def submit_session(api_url: str, payload: dict) -> bool:
