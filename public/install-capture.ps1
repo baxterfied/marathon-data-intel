@@ -49,12 +49,17 @@ if (-not $python) {
 
 # Install scapy (lightweight packet capture — no Wireshark needed)
 Write-Host "[*] Installing scapy (packet capture library)..." -ForegroundColor Yellow
-try {
-    $pipOut = & $python -m pip install scapy --quiet 2>&1
+$pipResult = Start-Process -FilePath $python -ArgumentList "-m pip install scapy" -NoNewWindow -Wait -PassThru
+if ($pipResult.ExitCode -eq 0) {
     Write-Host "[+] scapy installed" -ForegroundColor Green
-} catch {
-    Write-Host "[!] Could not install scapy automatically." -ForegroundColor Red
-    Write-Host "    Try manually: pip install scapy" -ForegroundColor Yellow
+} else {
+    # Check if already installed
+    $checkResult = Start-Process -FilePath $python -ArgumentList "-c `"import scapy`"" -NoNewWindow -Wait -PassThru
+    if ($checkResult.ExitCode -eq 0) {
+        Write-Host "[+] scapy already installed" -ForegroundColor Green
+    } else {
+        Write-Host "[!] Could not install scapy. Try manually: pip install scapy" -ForegroundColor Red
+    }
 }
 
 # Windows needs Npcap for raw packet capture
