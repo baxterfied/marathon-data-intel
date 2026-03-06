@@ -67,6 +67,36 @@
 
         #loading { text-align: center; padding: 40px; color: #8b949e; }
         .empty { text-align: center; color: #8b949e; padding: 40px; }
+
+        /* Mobile */
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.6rem; letter-spacing: 2px; }
+            .header p { font-size: 0.8rem; }
+            .nav { gap: 8px; }
+            .nav a { padding: 5px 8px; font-size: 0.7rem; }
+            .container { padding: 16px 12px; }
+            .summary { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+            .summary-card { padding: 10px 6px; }
+            .summary-card .val { font-size: 1.4rem; }
+            .summary-card .lbl { font-size: 0.55rem; }
+            .region-grid { grid-template-columns: 1fr; gap: 10px; }
+            .region-card { padding: 14px; }
+            .region-card h3 { font-size: 0.95rem; }
+            .metric .label, .metric .value { font-size: 0.85rem; }
+            h2 { font-size: 1.2rem; }
+
+            /* Table: horizontal scroll wrapper */
+            #servers { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            table { min-width: 500px; }
+            th, td { padding: 8px 10px; font-size: 0.8rem; }
+
+            .cta { flex-direction: column; gap: 12px; padding: 16px; }
+            .cta-icon { font-size: 1.5rem; }
+            .cta h3 { font-size: 1.1rem; }
+            .cta p { font-size: 0.8rem; }
+
+            .refresh-bar { flex-direction: column; gap: 4px; align-items: flex-start; }
+        }
     </style>
 </head>
 <body>
