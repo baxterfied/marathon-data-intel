@@ -356,104 +356,49 @@ async def submit_session(api_url: str, payload: dict) -> bool:
 
 # ── Interface detection ──
 
-def detect_interface_scapy() -> str:
-    """Auto-detect the best network interface using scapy.
-
-    On Windows, get_if_list() returns raw NPF device names that lack
-    human-readable info. Use conf.ifaces (IFACES) which has friendly
-    names, descriptions, and IPs so we can pick the right adapter.
-    """
-    skip = ["loopback", "virtual", "vmware", "virtualbox", "docker",
-            "vethernet", "wsl", "hyper-v", "wi-fi direct"]
-    prefer = ["ethernet", "eth", "en0", "en1", "wi-fi", "wlan", "wifi"]
-
-    # Try conf.ifaces first — works on Windows and gives friendly names + IPs
+def detect_interface() -> str:
+    """Auto-detect network interface by consulting the OS route table."""
+    # Try scapy's route table (cross-platform when available)
     try:
         from scapy.config import conf
-        ifaces = conf.ifaces
-
-        # Build list of (device_name, friendly_info) for matching
-        candidates = []
-        for dev_name, iface in ifaces.items():
-            name = getattr(iface, "name", "") or ""
-            description = getattr(iface, "description", "") or ""
-            ip = getattr(iface, "ip", "") or ""
-            searchable = f"{name} {description}".lower()
-
-            # Skip virtual/loopback adapters
-            if any(s in searchable for s in skip):
-                continue
-            # Skip adapters without a real IP
-            if not ip or ip.startswith("127.") or ip.startswith("169.254."):
-                continue
-
-            candidates.append((dev_name, name, description, ip, searchable))
-
-        # Prefer wired ethernet
-        for dev_name, name, desc, ip, searchable in candidates:
-            if any(p in searchable for p in prefer):
-                log.info("Selected interface (scapy): %s — %s [%s]", name, desc, ip)
-                return dev_name
-
-        # Fall back to first candidate with a real IP
-        if candidates:
-            dev_name, name, desc, ip, _ = candidates[0]
-            log.info("Selected interface (scapy): %s — %s [%s]", name, desc, ip)
-            return dev_name
-    except Exception as exc:
-        log.warning("Could not detect interface via conf.ifaces: %s", exc)
-
-    # Fallback: get_if_list (works on Linux/Mac)
-    try:
-        from scapy.arch import get_if_list
-        ifaces = get_if_list()
-        for iface in ifaces:
-            lower = iface.lower()
-            if any(s in lower for s in skip):
-                continue
-            if any(p in lower for p in prefer):
-                log.info("Selected interface (scapy): %s", iface)
-                return iface
-        for iface in ifaces:
-            lower = iface.lower()
-            if any(s in lower for s in skip):
-                continue
-            log.info("Selected interface (scapy): %s", iface)
+        iface, _, _ = conf.route.route("0.0.0.0")
+        if iface:
+            log.info("Selected interface (route table): %s", iface)
             return iface
-    except Exception as exc:
-        log.warning("Could not detect interface via get_if_list: %s", exc)
+    except Exception:
+        pass
 
-    return ""
-
-
-def detect_interface_tshark(tshark: str) -> str:
-    """Auto-detect the best network interface using tshark."""
+    # Linux/macOS: parse `ip route get` for the default outbound interface
     try:
         result = subprocess.run(
-            [tshark, "-D"], capture_output=True, text=True, timeout=5
+            ["ip", "route", "get", "8.8.8.8"],
+            capture_output=True, text=True, timeout=5,
         )
-        lines = result.stdout.strip().split("\n")
-        skip = ["loopback", "lo", "vethernet", "vmware", "virtualbox", "hyper-v", "docker", "wsl", "npcap"]
-        prefer = ["ethernet", "eth0", "en0", "wi-fi", "wlan", "wifi"]
-
-        for line in lines:
-            lower = line.lower()
-            if any(kw in lower for kw in skip):
-                continue
-            if any(kw in lower for kw in prefer):
-                iface = line.split(".")[0].strip()
-                log.info("Selected interface (tshark): %s", line.strip())
+        if result.returncode == 0:
+            parts = result.stdout.split()
+            if "dev" in parts:
+                iface = parts[parts.index("dev") + 1]
+                log.info("Selected interface (ip route): %s", iface)
                 return iface
-        for line in lines:
-            lower = line.lower()
-            if any(kw in lower for kw in skip):
-                continue
-            iface = line.split(".")[0].strip()
-            log.info("Selected interface (tshark): %s", line.strip())
-            return iface
-    except Exception as exc:
-        log.warning("Could not detect interface via tshark: %s", exc)
-    return "1"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # macOS fallback: `route get default`
+    try:
+        result = subprocess.run(
+            ["route", "get", "default"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "interface:" in line:
+                    iface = line.split("interface:")[-1].strip()
+                    log.info("Selected interface (route get): %s", iface)
+                    return iface
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return ""
 
 
 # ── Scapy capture backend ──
@@ -886,10 +831,8 @@ Examples:
     # Detect interface
     if args.interface:
         interface = args.interface
-    elif backend == "scapy":
-        interface = detect_interface_scapy()
     else:
-        interface = detect_interface_tshark(tshark_path)
+        interface = detect_interface()
 
     api_url = "" if args.dry_run else args.api_url
 
