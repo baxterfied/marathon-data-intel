@@ -52,7 +52,7 @@
         }
         .topbar-right button:hover { border-color: #00ff88; color: #00ff88; }
 
-        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px; }
         .grid-full { grid-column: 1 / -1; }
         .grid-2 { grid-column: span 2; }
 
@@ -658,12 +658,6 @@
             </div>
         </div>
 
-        <!-- Session Timeline -->
-        <div class="panel grid-full" id="timelinePanel">
-            <div class="panel-header"><span class="icon">&#128202;</span> SESSION TIMELINE</div>
-            <div id="timelineContent"><div class="empty-state">Loading timeline...</div></div>
-        </div>
-
         <!-- Session Overview -->
         <div class="panel grid-full">
             <div class="panel-header"><span class="icon">&#9889;</span> Session Overview</div>
@@ -680,106 +674,21 @@
             <div class="streak-bar" id="streakBar"></div>
         </div>
 
-        <!-- Recent Matches -->
+        <!-- Recent Matches + Network -->
         <div class="panel grid-2">
             <div class="panel-header"><span class="icon">&#128200;</span> Recent Matches</div>
             <div id="recentMatches"><div class="empty-state">No matches yet</div></div>
         </div>
 
-        <!-- Network Status -->
         <div class="panel">
             <div class="panel-header"><span class="icon">&#128225;</span> Network</div>
             <div id="networkPanel"><div class="empty-state">No network data</div></div>
         </div>
 
-        <!-- Recommended Loadouts -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#127919;</span> Recommended Loadouts</div>
-            <div id="loadoutPanel"><div class="empty-state">Play some matches first</div></div>
-        </div>
-
-        <!-- Meta Quick Ref -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#127942;</span> Meta Tier List</div>
-            <div id="metaPanel"><div class="empty-state">Loading...</div></div>
-        </div>
-
-        <!-- TTK Quick Reference -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#9876;</span> TTK Quick Ref (100 HP)</div>
-            <div id="ttkPanel"><div class="empty-state">Loading...</div></div>
-        </div>
-
-        <!-- Server Status -->
-        <div class="panel grid-full">
-            <div class="panel-header"><span class="icon">&#128994;</span> Server Status</div>
-            <div id="serverStatus" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
-        </div>
-
-        <!-- Best Time to Play -->
-        <div class="panel grid-2">
-            <div class="panel-header"><span class="icon">&#128337;</span> BEST TIME TO PLAY</div>
-            <div id="bestTimesPanel"><div class="empty-state">Loading best times...</div></div>
-        </div>
-
-        <!-- Server Quality -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#128737;</span> SERVER QUALITY</div>
-            <div id="serverQualityPanel"><div class="empty-state">Loading server quality...</div></div>
-        </div>
-
-        <!-- Session Decay -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#128267;</span> SESSION DECAY</div>
-            <div id="sessionDecayPanel"><div class="empty-state">Loading session decay...</div></div>
-        </div>
-
-        <!-- Queue Prediction -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#9203;</span> QUEUE TIMES</div>
-            <div id="queuePredictPanel"><div class="empty-state">Loading queue predictions...</div></div>
-        </div>
-
-        <!-- Personal Performance -->
-        <div class="panel grid-2">
-            <div class="panel-header"><span class="icon">&#9889;</span> YOUR EDGE</div>
-            <div id="performancePanel"><div class="empty-state">Loading performance data...</div></div>
-        </div>
-
-        <!-- Community Live Feed -->
-        <div class="panel grid-full">
-            <div class="panel-header"><span class="icon">&#127760;</span> COMMUNITY LIVE</div>
-            <div id="communityLivePanel">
-                <div class="empty-state">Loading community data...</div>
-            </div>
-        </div>
-
-        <!-- Community Intel Feed -->
-        <div class="panel grid-2">
-            <div class="panel-header"><span class="icon">&#128225;</span> COMMUNITY INTEL</div>
-            <div class="feed-panel" id="feedPanel">
-                <div class="empty-state">Loading intel feed...</div>
-            </div>
-        </div>
-
-        <!-- Trending Runners -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#128293;</span> TRENDING NOW</div>
-            <div id="trendingPanel">
-                <div class="empty-state">Loading trending runners...</div>
-            </div>
-        </div>
-
-        <!-- Pre-Match Scouting -->
-        <div class="panel">
-            <div class="panel-header"><span class="icon">&#128269;</span> SCOUT RUNNER</div>
-            <div class="scout-input-row">
-                <input type="text" id="scoutInput" placeholder="Runner name...">
-                <button onclick="loadScouting()">Scout</button>
-            </div>
-            <div id="scoutPanel">
-                <div class="empty-state">Type a runner name and hit Scout</div>
-            </div>
+        <!-- Session Timeline -->
+        <div class="panel grid-full" id="timelinePanel">
+            <div class="panel-header"><span class="icon">&#128202;</span> SESSION TIMELINE</div>
+            <div id="timelineContent"><div class="empty-state">Loading timeline...</div></div>
         </div>
     </div>
 </div>
@@ -828,18 +737,6 @@ async function refreshAll() {
         loadTimeline(),
         loadStreaks(),
         loadNetwork(),
-        loadMeta(),
-        loadLoadouts(),
-        loadTTK(),
-        loadServerStatus(),
-        loadBestTimes(),
-        loadServerQuality(),
-        loadSessionDecay(),
-        loadQueuePredict(),
-        loadPerformance(),
-        loadCommunityLive(),
-        loadTrending(),
-        loadFeed(),
     ]);
     document.getElementById('refreshInfo').textContent =
         'Updated ' + new Date().toLocaleTimeString() + ' · Auto-refresh 30s';
