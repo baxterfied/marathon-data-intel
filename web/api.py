@@ -1760,13 +1760,6 @@ def create_app(bot) -> FastAPI:
             return FileResponse(f)
         raise HTTPException(404)
 
-    @app.get("/about")
-    async def about_page():
-        f = PUBLIC_DIR / "about.html"
-        if f.exists():
-            return FileResponse(f)
-        raise HTTPException(404)
-
     @app.get("/overlay/{user_hash}")
     async def overlay_page(user_hash: str):
         f = PUBLIC_DIR / "overlay.html"
