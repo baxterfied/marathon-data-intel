@@ -621,12 +621,54 @@ async def _process_packets(
                 pkt_queue.get(), timeout=1.0
             )
         except asyncio.TimeoutError:
-            # No packet — still run periodic checks
+            # No packet — still run periodic checks including match-end detection
             now = time.time()
+
+            # Check for match end on servers with 0 PPS
+            if now - last_pps_check >= 1.0:
+                for ip, session in list(match_sessions.items()):
+                    if ip not in pps_counters:
+                        session.update_pps(0)
+                        if session.state == MatchState.IN_MATCH:
+                            srv = servers.get(ip)
+                            if srv:
+                                session.peak_ping_ms = max(session.peak_ping_ms, srv.avg_ping_ms)
+                                session.avg_ping_ms = srv.avg_ping_ms
+                            elapsed = now - session.match_start if session.match_start else 0
+                            if elapsed >= MATCH_MIN_DURATION:
+                                session.match_end = now
+                                region = guess_region(ip)
+                                log.info(
+                                    "[%s] MATCH ENDED — Duration: %ds | Queue: %ds | Packets: %d | Region: %s",
+                                    ip, session.duration_s, session.queue_time_s,
+                                    session.total_packets, region,
+                                )
+                                session_matches += 1
+                                payload = session.to_session_dict(user_hash, region=region, patch=patch)
+                                if api_url:
+                                    success = await submit_session(api_url, payload)
+                                    if success:
+                                        log.info("  -> Session submitted to API")
+                                    else:
+                                        log.warning("  -> Session API submission failed")
+                                match_sessions[ip] = MatchSession(server_ip=ip)
+                            else:
+                                session.state = MatchState.IDLE
+                        elif session.state == MatchState.QUEUING:
+                            session.state = MatchState.IDLE
+                pps_counters.clear()
+                last_pps_check = now
+
             if api_url and now - last_live_push >= LIVE_PUSH_INTERVAL:
                 live_state = _build_live_state(servers, match_sessions, now, session_matches, session_wins, session_losses)
                 asyncio.ensure_future(push_live_status(api_url, user_hash, live_state))
                 last_live_push = now
+
+            # Submit network stats periodically even when idle
+            if now - last_submit >= SUBMIT_INTERVAL:
+                await _submit_all(servers, api_url, user_hash, patch)
+                last_submit = now
+
             continue
 
         # Determine remote server IP
