@@ -311,21 +311,27 @@ def _get_local_ips() -> set[str]:
 
 # ── API submission ──
 
+_API_KEY = ""  # set via --api-key flag
+
+
 async def _api_post(api_url: str, path: str, payload: dict, timeout: int = 10) -> bool:
     """POST JSON to an API endpoint. Returns True on success."""
     if not api_url:
         return False
     url = f"{api_url}{path}"
+    headers = {"Content-Type": "application/json"}
+    if _API_KEY:
+        headers["X-Api-Key"] = _API_KEY
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=payload, headers=headers)
             return resp.status_code == 200
     except ImportError:
         import urllib.request
         import urllib.error
         data = json.dumps(payload, default=str).encode()
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.status == 200
@@ -775,7 +781,11 @@ Examples:
     parser.add_argument("--dry-run", action="store_true", help="Print stats without submitting")
     parser.add_argument("--backend", choices=["auto", "scapy", "tshark"], default="auto",
                         help="Force a specific capture backend")
+    parser.add_argument("--api-key", default="", help="API write key for authentication")
     args = parser.parse_args()
+
+    global _API_KEY
+    _API_KEY = args.api_key
 
     # Detect capture backend
     if args.backend == "scapy":

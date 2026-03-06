@@ -13,7 +13,7 @@ from services.redis_cache import TTL_AI_INSIGHT, TTL_HISTORY
 
 log = logging.getLogger("marathon.ai")
 
-CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
+CLAUDE_MODEL = config.AI_MODEL
 MAX_TOKENS = 1500
 HISTORY_MAX_TURNS = 10
 

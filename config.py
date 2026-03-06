@@ -60,5 +60,11 @@ WEB_BASE_URL: str = os.getenv("WEB_BASE_URL", "https://marathon.straightfirefood
 # -- Bungie (optional) --
 BUNGIE_API_KEY: str = os.getenv("BUNGIE_API_KEY", "")
 
+# -- API Security --
+API_WRITE_KEY: str = os.getenv("API_WRITE_KEY", "")  # required for POST endpoints from capture agents
+
+# -- AI --
+AI_MODEL: str = os.getenv("AI_MODEL", "claude-sonnet-4-20250514")
+
 # -- Misc --
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

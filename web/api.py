@@ -2,17 +2,16 @@
 
 import json
 import logging
-import time
-from collections import defaultdict
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
 
+import config
 from services.redis_cache import (
     cache_get, cache_set, invalidate_match_caches,
     TTL_COMMUNITY_STATS, TTL_LEADERBOARD, TTL_META, TTL_AI_INSIGHT,
@@ -22,25 +21,34 @@ log = logging.getLogger("marathon.web")
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
 
-# Simple in-memory rate limiter (per IP, per endpoint group)
-_rate_limits: dict[str, list[float]] = defaultdict(list)
+# Rate limit config
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX_WRITES = 30  # max write requests per window per IP
 RATE_LIMIT_MAX_READS = 120  # max read requests per window per IP
 
 
-def _check_rate_limit(client_ip: str, is_write: bool = False) -> bool:
-    """Returns True if request is allowed, False if rate limited."""
-    key = f"{client_ip}:{'w' if is_write else 'r'}"
-    now = time.time()
-    cutoff = now - RATE_LIMIT_WINDOW
-    # Clean old entries
-    _rate_limits[key] = [t for t in _rate_limits[key] if t > cutoff]
+async def _check_rate_limit(redis_client, client_ip: str, is_write: bool = False) -> bool:
+    """Redis-backed sliding window rate limiter. Falls back to allow if Redis is down."""
+    if redis_client is None:
+        return True
+    kind = "w" if is_write else "r"
+    key = f"marathon:rate:{client_ip}:{kind}"
     limit = RATE_LIMIT_MAX_WRITES if is_write else RATE_LIMIT_MAX_READS
-    if len(_rate_limits[key]) >= limit:
-        return False
-    _rate_limits[key].append(now)
-    return True
+    try:
+        count = await redis_client.incr(key)
+        if count == 1:
+            await redis_client.expire(key, RATE_LIMIT_WINDOW)
+        return count <= limit
+    except Exception:
+        return True
+
+
+def _check_api_key(x_api_key: Optional[str]) -> None:
+    """Validate API write key. Raises 401 if invalid."""
+    if not config.API_WRITE_KEY:
+        return  # no key configured = open (backward compat during rollout)
+    if x_api_key != config.API_WRITE_KEY:
+        raise HTTPException(401, "Invalid or missing API key")
 
 
 # -- Pydantic models --
@@ -215,9 +223,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Matches --
     @app.post("/api/matches")
-    async def submit_match(match: MatchSubmission, request: Request):
+    async def submit_match(match: MatchSubmission, request: Request, x_api_key: Optional[str] = Header(None)):
+        _check_api_key(x_api_key)
         client_ip = request.client.host if request.client else "unknown"
-        if not _check_rate_limit(client_ip, is_write=True):
+        if not await _check_rate_limit(_redis(), client_ip, is_write=True):
             raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
@@ -237,9 +246,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Network --
     @app.post("/api/network")
-    async def submit_network(data: NetworkSubmission, request: Request):
+    async def submit_network(data: NetworkSubmission, request: Request, x_api_key: Optional[str] = Header(None)):
+        _check_api_key(x_api_key)
         client_ip = request.client.host if request.client else "unknown"
-        if not _check_rate_limit(client_ip, is_write=True):
+        if not await _check_rate_limit(_redis(), client_ip, is_write=True):
             raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
@@ -308,7 +318,8 @@ def create_app(bot) -> FastAPI:
         return {"patches": [dict(r) for r in rows]}
 
     @app.post("/api/patches")
-    async def submit_patch(patch: PatchSubmission):
+    async def submit_patch(patch: PatchSubmission, x_api_key: Optional[str] = Header(None)):
+        _check_api_key(x_api_key)
         pool = _pool()
         if not pool:
             raise HTTPException(503, "Database offline")
@@ -607,9 +618,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Match Sessions --
     @app.post("/api/sessions")
-    async def submit_session(session: MatchSessionSubmission, request: Request):
+    async def submit_session(session: MatchSessionSubmission, request: Request, x_api_key: Optional[str] = Header(None)):
+        _check_api_key(x_api_key)
         client_ip = request.client.host if request.client else "unknown"
-        if not _check_rate_limit(client_ip, is_write=True):
+        if not await _check_rate_limit(_redis(), client_ip, is_write=True):
             raise HTTPException(429, "Rate limited. Max 30 submissions per minute.")
         pool = _pool()
         if not pool:
@@ -675,9 +687,10 @@ def create_app(bot) -> FastAPI:
 
     # -- Live Status (netcapture <-> dashboard bridge) --
     @app.post("/api/live/{user_hash}")
-    async def update_live_status(user_hash: str, status: LiveStatusUpdate, request: Request):
+    async def update_live_status(user_hash: str, status: LiveStatusUpdate, request: Request, x_api_key: Optional[str] = Header(None)):
+        _check_api_key(x_api_key)
         client_ip = request.client.host if request.client else "unknown"
-        if not _check_rate_limit(client_ip, is_write=True):
+        if not await _check_rate_limit(_redis(), client_ip, is_write=True):
             raise HTTPException(429, "Rate limited.")
         redis = _redis()
         if redis:
