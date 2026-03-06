@@ -6,158 +6,118 @@
     <title>Network Intel - Marathon Data Intel</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
-        .header { background: #161b22; border-bottom: 1px solid #00ff8820; padding: 20px; text-align: center; }
-        .header h1 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; font-size: 2.2rem; letter-spacing: 4px; }
-        .header p { font-family: 'Playfair Display', serif; font-style: italic; color: #8b949e; font-size: 0.9rem; margin-top: 4px; }
-        .nav { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
-        .nav a { font-family: 'Space Mono', monospace; color: #00ff88; text-decoration: none; padding: 6px 12px; border: 1px solid #00ff8840; border-radius: 4px; font-size: 0.8rem; }
-        .nav a:hover { background: #00ff8820; }
-        .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; }
 
-        /* Summary bar */
-        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
-        .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; text-align: center; }
-        .summary-card .val { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: #00ff88; }
-        .summary-card .lbl { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: #8b949e; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+        /* Compact header */
+        .header { background: #161b22; border-bottom: 1px solid #00ff8830; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .header h1 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; font-size: 1.3rem; letter-spacing: 3px; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .nav { display: flex; gap: 8px; }
+        .nav a { font-family: 'Space Mono', monospace; color: #58a6ff; text-decoration: none; font-size: 0.7rem; padding: 4px 8px; border-radius: 3px; }
+        .nav a:hover { background: #21262d; }
+        .live { display: flex; align-items: center; gap: 5px; font-family: 'Space Mono', monospace; font-size: 0.65rem; color: #8b949e; }
+        .pulse { width: 6px; height: 6px; border-radius: 50%; background: #00ff88; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        /* Sections */
-        h2 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; font-size: 1.5rem; margin-bottom: 12px; letter-spacing: 3px; }
-        .section { margin-bottom: 32px; }
+        /* Summary banner */
+        .summary { display: flex; gap: 2px; padding: 0 12px; background: #0d1117; border-bottom: 1px solid #21262d; }
+        .summary-item { flex: 1; padding: 10px 8px; text-align: center; border-right: 1px solid #21262d; }
+        .summary-item:last-child { border-right: none; }
+        .summary-item .val { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: #00ff88; line-height: 1; }
+        .summary-item .lbl { font-family: 'Space Mono', monospace; font-size: 0.55rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-        /* Region grid */
-        .region-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-        .region-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; transition: border-color 0.2s; }
-        .region-card:hover { border-color: #00ff88; }
-        .region-card h3 { margin-bottom: 12px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
-        .metric { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; }
-        .metric:last-child { border-bottom: none; }
-        .metric .label { color: #8b949e; font-size: 0.9rem; }
-        .metric .value { font-weight: bold; font-size: 0.9rem; }
-        .good { color: #00ff88; }
-        .warn { color: #ffcc00; }
-        .bad { color: #ff4444; }
-        .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+        /* Main content */
+        .content { padding: 12px; display: flex; gap: 12px; }
+
+        /* Region list - compact sidebar style */
+        .regions { flex: 0 0 320px; display: flex; flex-direction: column; gap: 6px; }
+        .region-row { background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto auto auto auto; align-items: center; gap: 12px; transition: border-color 0.15s; }
+        .region-row:hover { border-color: #30363d; }
+        .region-name { font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+        .region-stat { text-align: right; font-size: 0.8rem; font-weight: 600; min-width: 50px; }
+        .region-stat-lbl { font-family: 'Space Mono', monospace; font-size: 0.5rem; color: #8b949e; text-transform: uppercase; }
+        .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
         .dot-good { background: #00ff88; }
         .dot-warn { background: #ffcc00; }
         .dot-bad { background: #ff4444; }
 
-        /* Server table */
-        table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 8px; overflow: hidden; }
-        th { font-family: 'Space Mono', monospace; background: #21262d; color: #00ff88; padding: 10px 14px; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
-        td { padding: 10px 14px; border-top: 1px solid #30363d; font-size: 0.9rem; font-family: 'Rajdhani', sans-serif; font-weight: 500; }
-        tr:hover td { background: #21262d; }
+        /* Server table - main area */
+        .servers { flex: 1; min-width: 0; }
+        .servers h2 { font-family: 'Bebas Neue', sans-serif; color: #8b949e; font-size: 0.9rem; letter-spacing: 2px; margin-bottom: 6px; }
+        .table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid #21262d; }
+        table { width: 100%; border-collapse: collapse; background: #161b22; }
+        th { font-family: 'Space Mono', monospace; background: #0d1117; color: #8b949e; padding: 6px 12px; text-align: left; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 7px 12px; border-top: 1px solid #21262d; font-size: 0.82rem; font-weight: 500; }
+        tr:hover td { background: #1c2128; }
 
-        /* Capture agent CTA */
-        .cta { background: linear-gradient(135deg, #161b22 0%, #1a2332 100%); border: 1px solid #00ff8840; border-radius: 8px; padding: 24px; display: flex; gap: 20px; align-items: flex-start; }
-        .cta-icon { font-size: 2rem; flex-shrink: 0; }
-        .cta h3 { font-family: 'Bebas Neue', sans-serif; color: #00ff88; margin-bottom: 6px; font-size: 1.3rem; letter-spacing: 2px; }
-        .cta p { color: #8b949e; font-size: 0.9rem; line-height: 1.5; }
-        .cta code { font-family: 'Space Mono', monospace; background: #21262d; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem; color: #e0e0e0; }
-        .cta a { color: #00ff88; }
+        .good { color: #00ff88; }
+        .warn { color: #ffcc00; }
+        .bad { color: #ff4444; }
 
-        /* Auto-refresh indicator */
-        .refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .refresh-bar .live { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #8b949e; }
-        .pulse { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        /* CTA - inline bar */
+        .cta { background: #161b22; border-top: 1px solid #21262d; padding: 10px 16px; display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #8b949e; }
+        .cta code { font-family: 'Space Mono', monospace; background: #21262d; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; color: #e0e0e0; }
+        .cta a { color: #58a6ff; text-decoration: none; }
+        .cta a:hover { text-decoration: underline; }
 
-        #loading { text-align: center; padding: 40px; color: #8b949e; }
-        .empty { text-align: center; color: #8b949e; padding: 40px; }
+        .empty { text-align: center; color: #8b949e; padding: 24px; font-size: 0.85rem; }
+        #loading { text-align: center; padding: 24px; color: #8b949e; }
 
         /* Mobile */
-        @media (max-width: 600px) {
-            .header h1 { font-size: 1.6rem; letter-spacing: 2px; }
-            .header p { font-size: 0.8rem; }
-            .nav { gap: 8px; }
-            .nav a { padding: 5px 8px; font-size: 0.7rem; }
-            .container { padding: 16px 12px; }
-            .summary { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-            .summary-card { padding: 10px 6px; }
-            .summary-card .val { font-size: 1.4rem; }
-            .summary-card .lbl { font-size: 0.55rem; }
-            .region-grid { grid-template-columns: 1fr; gap: 10px; }
-            .region-card { padding: 14px; }
-            .region-card h3 { font-size: 0.95rem; }
-            .metric .label, .metric .value { font-size: 0.85rem; }
-            h2 { font-size: 1.2rem; }
-
-            /* Table: horizontal scroll wrapper */
-            #servers { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            table { min-width: 500px; }
-            th, td { padding: 8px 10px; font-size: 0.8rem; }
-
-            .cta { flex-direction: column; gap: 12px; padding: 16px; }
-            .cta-icon { font-size: 1.5rem; }
-            .cta h3 { font-size: 1.1rem; }
-            .cta p { font-size: 0.8rem; }
-
-            .refresh-bar { flex-direction: column; gap: 4px; align-items: flex-start; }
+        @media (max-width: 700px) {
+            .header { padding: 10px 12px; }
+            .header h1 { font-size: 1.1rem; }
+            .content { flex-direction: column; padding: 8px; gap: 8px; }
+            .regions { flex: none; }
+            .region-row { grid-template-columns: 1fr auto auto auto; gap: 8px; padding: 8px 10px; }
+            .region-stat { min-width: 40px; font-size: 0.75rem; }
+            .summary-item .val { font-size: 1.2rem; }
+            .summary-item .lbl { font-size: 0.5rem; }
+            .cta { flex-wrap: wrap; font-size: 0.75rem; }
+            th, td { padding: 6px 8px; font-size: 0.75rem; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Network Intel</h1>
-        <p>Live server performance data from community capture agents</p>
-        <div class="nav">
-            <a href="/">Dashboard</a>
-            <a href="/leaderboard">Leaderboard</a>
-            <a href="/network">Network</a>
-            <a href="/api-tool">API Tool</a>
-            <a href="/docs">API Docs</a>
+        <div class="header-right">
+            <div class="live"><span class="pulse"></span> <span id="last-update">Live</span></div>
+            <div class="nav">
+                <a href="/">Home</a>
+                <a href="/me">Dashboard</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/capture">Capture</a>
+                <a href="/docs">API</a>
+            </div>
         </div>
     </div>
 
-    <div class="container">
-        <div class="refresh-bar">
-            <div class="live"><span class="pulse"></span> Auto-refreshes every 30s</div>
-            <div id="last-update" style="font-size:0.8rem;color:#8b949e;"></div>
+    <div id="summary" class="summary">
+        <div class="summary-item"><div class="val">-</div><div class="lbl">Regions</div></div>
+        <div class="summary-item"><div class="val">-</div><div class="lbl">Samples</div></div>
+        <div class="summary-item"><div class="val">-</div><div class="lbl">Ping</div></div>
+        <div class="summary-item"><div class="val">-</div><div class="lbl">Jitter</div></div>
+        <div class="summary-item"><div class="val">-</div><div class="lbl">Loss</div></div>
+    </div>
+
+    <div class="content">
+        <div class="regions" id="regions">
+            <div id="loading">Loading...</div>
         </div>
-
-        <!-- Summary -->
-        <div id="summary" class="summary"></div>
-
-        <!-- Region overview -->
-        <div class="section">
-            <h2>Server Regions</h2>
-            <div id="regions" class="region-grid"><div id="loading">Loading network data...</div></div>
-        </div>
-
-        <!-- Per-server breakdown -->
-        <div class="section">
+        <div class="servers">
             <h2>Server Detail</h2>
-            <div id="servers"></div>
+            <div class="table-wrap" id="servers"></div>
         </div>
+    </div>
 
-        <!-- Capture agent CTA -->
-        <div class="section">
-            <div class="cta">
-                <div class="cta-icon">&#128225;</div>
-                <div>
-                    <h3>Contribute Network Data</h3>
-                    <p>
-                        Run the <strong>Network Capture Agent</strong> while you play Marathon.
-                        It uses <code>tshark</code> to capture game traffic and auto-submits
-                        ping, jitter, and packet loss data to this dashboard.
-                    </p>
-                    <p style="margin-top: 8px;">
-                        <a href="https://github.com/baxterfied/marathon-data-intel/blob/main/utils/netcapture.py">Download netcapture.py</a>
-                        &mdash; then run:
-                    </p>
-                    <p style="margin-top: 4px;">
-                        <code>python netcapture.py --user-hash YOUR_NAME</code>
-                    </p>
-                    <p style="margin-top: 8px; font-size: 0.8rem;">
-                        Requires <a href="https://www.wireshark.org/download.html">tshark</a> installed.
-                        Run as admin. Use <code>--dry-run</code> to test without submitting.
-                    </p>
-                </div>
-            </div>
-        </div>
+    <div class="cta">
+        <span>Contribute data:</span>
+        <code>pip install scapy && python netcapture.py --user-hash YOUR_NAME</code>
+        <a href="/capture">Setup guide</a>
     </div>
 
     <script>
@@ -178,33 +138,33 @@
 
                 // Summary
                 const totalSamples = regions.reduce((s, r) => s + r.samples, 0);
-                const avgPing = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_ping), 0) / regions.length).toFixed(1) : '—';
-                const avgJitter = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_jitter), 0) / regions.length).toFixed(1) : '—';
-                const avgLoss = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_loss), 0) / regions.length).toFixed(2) : '—';
+                const avgPing = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_ping), 0) / regions.length).toFixed(1) : '-';
+                const avgJitter = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_jitter), 0) / regions.length).toFixed(1) : '-';
+                const avgLoss = regions.length ? (regions.reduce((s, r) => s + parseFloat(r.avg_loss), 0) / regions.length).toFixed(2) : '-';
 
                 document.getElementById('summary').innerHTML = `
-                    <div class="summary-card"><div class="val">${regions.length}</div><div class="lbl">Regions</div></div>
-                    <div class="summary-card"><div class="val">${totalSamples.toLocaleString()}</div><div class="lbl">Samples</div></div>
-                    <div class="summary-card"><div class="val ${pingClass(avgPing)}">${avgPing}ms</div><div class="lbl">Avg Ping</div></div>
-                    <div class="summary-card"><div class="val">${avgJitter}ms</div><div class="lbl">Avg Jitter</div></div>
-                    <div class="summary-card"><div class="val ${lossClass(avgLoss)}">${avgLoss}%</div><div class="lbl">Avg Loss</div></div>
+                    <div class="summary-item"><div class="val">${regions.length}</div><div class="lbl">Regions</div></div>
+                    <div class="summary-item"><div class="val">${totalSamples.toLocaleString()}</div><div class="lbl">Samples</div></div>
+                    <div class="summary-item"><div class="val ${pingClass(avgPing)}">${avgPing}ms</div><div class="lbl">Ping</div></div>
+                    <div class="summary-item"><div class="val">${avgJitter}ms</div><div class="lbl">Jitter</div></div>
+                    <div class="summary-item"><div class="val ${lossClass(avgLoss)}">${avgLoss}%</div><div class="lbl">Loss</div></div>
                 `;
 
                 // Regions
                 if (!regions.length) {
-                    document.getElementById('regions').innerHTML = '<div class="empty">No network data yet. Run the capture agent to contribute!</div>';
+                    document.getElementById('regions').innerHTML = '<div class="empty">No data yet. Run the capture agent to contribute.</div>';
                 } else {
                     let rhtml = '';
                     regions.forEach(r => {
                         const pc = pingClass(r.avg_ping);
                         const dc = dotClass(r.avg_ping);
                         const lc = lossClass(r.avg_loss);
-                        rhtml += `<div class="region-card">
-                            <h3><span class="dot ${dc}"></span>${r.region}</h3>
-                            <div class="metric"><span class="label">Avg Ping</span><span class="value ${pc}">${r.avg_ping}ms</span></div>
-                            <div class="metric"><span class="label">Jitter</span><span class="value">${r.avg_jitter}ms</span></div>
-                            <div class="metric"><span class="label">Packet Loss</span><span class="value ${lc}">${r.avg_loss}%</span></div>
-                            <div class="metric"><span class="label">Samples</span><span class="value">${r.samples}</span></div>
+                        rhtml += `<div class="region-row">
+                            <div class="region-name"><span class="dot ${dc}"></span>${r.region}</div>
+                            <div class="region-stat"><div class="${pc}">${r.avg_ping}ms</div><div class="region-stat-lbl">Ping</div></div>
+                            <div class="region-stat"><div>${r.avg_jitter}ms</div><div class="region-stat-lbl">Jitter</div></div>
+                            <div class="region-stat"><div class="${lc}">${r.avg_loss}%</div><div class="region-stat-lbl">Loss</div></div>
+                            <div class="region-stat"><div>${r.samples}</div><div class="region-stat-lbl">n</div></div>
                         </div>`;
                     });
                     document.getElementById('regions').innerHTML = rhtml;
@@ -214,7 +174,7 @@
                 if (servers.length) {
                     let thtml = `<table><thead><tr>
                         <th>Region</th><th>Map</th><th>Ping</th><th>Jitter</th>
-                        <th>Loss</th><th>Tick Rate</th><th>Samples</th>
+                        <th>Loss</th><th>Tick</th><th>n</th>
                     </tr></thead><tbody>`;
                     servers.forEach(s => {
                         const pc = pingClass(s.avg_ping);
@@ -224,7 +184,7 @@
                             <td class="${pc}">${s.avg_ping}ms</td>
                             <td>${s.avg_jitter}ms</td>
                             <td class="${lc}">${s.avg_loss}%</td>
-                            <td>${s.avg_tick_rate || '—'}</td>
+                            <td>${s.avg_tick_rate || '-'}</td>
                             <td>${s.samples}</td>
                         </tr>`;
                     });
@@ -234,10 +194,10 @@
                     document.getElementById('servers').innerHTML = '<div class="empty">No per-server data yet</div>';
                 }
 
-                document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
 
             } catch (e) {
-                document.getElementById('regions').innerHTML = '<div class="empty">Failed to load network data</div>';
+                document.getElementById('regions').innerHTML = '<div class="empty">Failed to load</div>';
             }
         }
 
