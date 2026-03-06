@@ -449,6 +449,7 @@ async def run_capture_scapy(
 
     # Packet queue for async processing
     pkt_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
 
     def _packet_handler(pkt):
         """Called by scapy sniffer thread for each matching packet."""
@@ -465,7 +466,9 @@ async def run_capture_scapy(
         # Quick port filter (BPF should handle this but be safe)
         if src_port not in ALL_GAME_PORTS and dst_port not in ALL_GAME_PORTS:
             return
-        pkt_queue.put_nowait((ts, src_ip, dst_ip, src_port, dst_port, pkt_len))
+        # call_soon_threadsafe because scapy's sniffer runs in a separate thread
+        # and asyncio.Queue is not thread-safe
+        loop.call_soon_threadsafe(pkt_queue.put_nowait, (ts, src_ip, dst_ip, src_port, dst_port, pkt_len))
 
     # Start async sniffer in background thread
     sniffer_kwargs = {
