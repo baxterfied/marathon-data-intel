@@ -357,14 +357,56 @@ async def submit_session(api_url: str, payload: dict) -> bool:
 # ── Interface detection ──
 
 def detect_interface_scapy() -> str:
-    """Auto-detect the best network interface using scapy."""
+    """Auto-detect the best network interface using scapy.
+
+    On Windows, get_if_list() returns raw NPF device names that lack
+    human-readable info. Use conf.ifaces (IFACES) which has friendly
+    names, descriptions, and IPs so we can pick the right adapter.
+    """
+    skip = ["loopback", "virtual", "vmware", "virtualbox", "docker",
+            "vethernet", "wsl", "hyper-v", "wi-fi direct"]
+    prefer = ["ethernet", "eth", "en0", "en1", "wi-fi", "wlan", "wifi"]
+
+    # Try conf.ifaces first — works on Windows and gives friendly names + IPs
+    try:
+        from scapy.config import conf
+        ifaces = conf.ifaces
+
+        # Build list of (device_name, friendly_info) for matching
+        candidates = []
+        for dev_name, iface in ifaces.items():
+            name = getattr(iface, "name", "") or ""
+            description = getattr(iface, "description", "") or ""
+            ip = getattr(iface, "ip", "") or ""
+            searchable = f"{name} {description}".lower()
+
+            # Skip virtual/loopback adapters
+            if any(s in searchable for s in skip):
+                continue
+            # Skip adapters without a real IP
+            if not ip or ip.startswith("127.") or ip.startswith("169.254."):
+                continue
+
+            candidates.append((dev_name, name, description, ip, searchable))
+
+        # Prefer wired ethernet
+        for dev_name, name, desc, ip, searchable in candidates:
+            if any(p in searchable for p in prefer):
+                log.info("Selected interface (scapy): %s — %s [%s]", name, desc, ip)
+                return dev_name
+
+        # Fall back to first candidate with a real IP
+        if candidates:
+            dev_name, name, desc, ip, _ = candidates[0]
+            log.info("Selected interface (scapy): %s — %s [%s]", name, desc, ip)
+            return dev_name
+    except Exception as exc:
+        log.warning("Could not detect interface via conf.ifaces: %s", exc)
+
+    # Fallback: get_if_list (works on Linux/Mac)
     try:
         from scapy.arch import get_if_list
         ifaces = get_if_list()
-        skip = ["lo", "loopback", "vmware", "virtualbox", "docker", "vethernet", "wsl", "npcap"]
-        prefer = ["ethernet", "eth", "en0", "en1", "wi-fi", "wlan", "wifi"]
-
-        # Try preferred first
         for iface in ifaces:
             lower = iface.lower()
             if any(s in lower for s in skip):
@@ -372,8 +414,6 @@ def detect_interface_scapy() -> str:
             if any(p in lower for p in prefer):
                 log.info("Selected interface (scapy): %s", iface)
                 return iface
-
-        # Fall back to first non-virtual
         for iface in ifaces:
             lower = iface.lower()
             if any(s in lower for s in skip):
@@ -381,17 +421,7 @@ def detect_interface_scapy() -> str:
             log.info("Selected interface (scapy): %s", iface)
             return iface
     except Exception as exc:
-        log.warning("Could not detect interface via scapy: %s", exc)
-
-    # Windows: try to use conf.iface
-    try:
-        from scapy.config import conf
-        if conf.iface:
-            iface = str(conf.iface)
-            log.info("Using scapy default interface: %s", iface)
-            return iface
-    except Exception:
-        pass
+        log.warning("Could not detect interface via get_if_list: %s", exc)
 
     return ""
 
