@@ -50,7 +50,7 @@ if (-not $python) {
 # Install scapy (lightweight packet capture — no Wireshark needed)
 Write-Host "[*] Installing scapy (packet capture library)..." -ForegroundColor Yellow
 try {
-    & $python -m pip install scapy --quiet 2>&1 | Out-Null
+    $pipOut = & $python -m pip install scapy --quiet 2>&1
     Write-Host "[+] scapy installed" -ForegroundColor Green
 } catch {
     Write-Host "[!] Could not install scapy automatically." -ForegroundColor Red
@@ -58,17 +58,14 @@ try {
 }
 
 # Windows needs Npcap for raw packet capture
-$npcapInstalled = Test-Path "C:\Windows\System32\Npcap" -or (Test-Path "C:\Program Files\Npcap")
-if (-not $npcapInstalled) {
-    # Check if WinPcap or Npcap DLLs exist
-    $hasPcap = (Test-Path "C:\Windows\System32\wpcap.dll") -or (Test-Path "C:\Windows\SysWOW64\wpcap.dll")
-    if (-not $hasPcap) {
-        Write-Host "[!] Npcap not detected. scapy needs Npcap for packet capture on Windows." -ForegroundColor Yellow
-        Write-Host "    Download from: https://npcap.com/#download" -ForegroundColor Yellow
-        Write-Host "    Install with 'WinPcap API-compatible Mode' checked." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "    If you already have Wireshark installed, Npcap is included." -ForegroundColor Cyan
-    }
+$hasNpcap = (Test-Path "C:\Windows\System32\Npcap") -or (Test-Path "C:\Program Files\Npcap")
+$hasPcap = (Test-Path "C:\Windows\System32\wpcap.dll") -or (Test-Path "C:\Windows\SysWOW64\wpcap.dll")
+if ((-not $hasNpcap) -and (-not $hasPcap)) {
+    Write-Host "[!] Npcap not detected. scapy needs Npcap for packet capture on Windows." -ForegroundColor Yellow
+    Write-Host "    Download from: https://npcap.com/#download" -ForegroundColor Yellow
+    Write-Host "    Install with 'WinPcap API-compatible Mode' checked." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    If you already have Wireshark installed, Npcap is included." -ForegroundColor Cyan
 }
 
 # Create install directory
