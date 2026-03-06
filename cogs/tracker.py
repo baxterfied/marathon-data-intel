@@ -770,6 +770,24 @@ class Tracker(commands.Cog):
             embed.add_field(name="Secondary", value=secondary_weapon, inline=True)
         embed.set_footer(text=f"Recorded for {user_hash}")
 
+        # Generate AI match commentary if available
+        ai_client = getattr(self.bot, "ai_client", None)
+        if ai_client:
+            try:
+                from services.ai import generate_match_commentary
+                commentary = await generate_match_commentary(ai_client, {
+                    "runner_name": runner,
+                    "map_name": map_name,
+                    "result": result_value,
+                    "kills": kills,
+                    "deaths": deaths,
+                    "damage": damage,
+                })
+                if commentary:
+                    embed.add_field(name="AI Commentary", value=commentary, inline=False)
+            except Exception:
+                pass  # AI failure should never block match submission
+
         await interaction.followup.send(embed=embed)
 
 

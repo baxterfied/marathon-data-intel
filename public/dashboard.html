@@ -314,14 +314,226 @@
 
         .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
 
+        /* ===== TABLET (<=900px): 2-column layout ===== */
         @media (max-width: 900px) {
             .grid { grid-template-columns: 1fr 1fr; }
             .grid-2 { grid-column: span 2; }
         }
-        @media (max-width: 600px) {
-            .grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+
+        /* ===== MOBILE (<=768px): Full responsive overhaul ===== */
+        @media (max-width: 768px) {
+            /* --- Global / Layout --- */
+            body { font-size: 15px; }
+            .grid {
+                grid-template-columns: 1fr;
+                padding: 12px;
+                gap: 12px;
+            }
             .grid-2, .grid-full { grid-column: 1; }
+
+            /* --- Login Screen --- */
+            .login-screen h1 { font-size: 2rem; letter-spacing: 3px; }
+            .login-screen p { font-size: 0.9rem; }
+            .login-box { flex-direction: column; width: 100%; max-width: 320px; }
+            .login-box input { width: 100%; min-height: 44px; font-size: 1rem; }
+            .login-box button { width: 100%; min-height: 44px; font-size: 1.1rem; }
+
+            /* --- Top Bar --- */
+            .topbar {
+                flex-wrap: wrap;
+                gap: 8px;
+                padding: 10px 12px;
+            }
+            .topbar-left {
+                gap: 10px;
+                flex: 1;
+                min-width: 0;
+            }
+            .topbar h1 { font-size: 1.1rem; letter-spacing: 2px; }
+            .topbar .user {
+                font-size: 0.7rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 100px;
+            }
+            .topbar-right {
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .topbar-right .refresh-info {
+                font-size: 0.6rem;
+                width: 100%;
+                text-align: right;
+                order: 3;
+            }
+            .topbar-right button {
+                min-height: 44px;
+                min-width: 44px;
+                padding: 8px 14px;
+                font-size: 0.85rem;
+            }
+
+            /* --- Panels / Cards --- */
+            .panel {
+                padding: 14px 12px;
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            .panel-header {
+                font-size: 1rem;
+                letter-spacing: 1.5px;
+                margin-bottom: 10px;
+            }
+
+            /* --- Session Stats: 2-col grid on mobile --- */
+            .session-stats {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
             .session-stat .val { font-size: 1.6rem; }
+            .session-stat .lbl { font-size: 0.6rem; }
+
+            /* --- Streak Bar: wrappable --- */
+            .streak-bar {
+                flex-wrap: wrap;
+                gap: 3px;
+            }
+            .streak-block {
+                width: 24px;
+                height: 24px;
+                font-size: 0.65rem;
+            }
+
+            /* --- Match Rows: compact stacking --- */
+            .match-row {
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 10px 0;
+            }
+            .match-runner { min-width: 60px; font-size: 0.85rem; }
+            .match-map {
+                flex-basis: 100%;
+                order: 5;
+                font-size: 0.78rem;
+                padding-left: 48px;
+            }
+            .match-kd { font-size: 0.78rem; }
+            .match-time { font-size: 0.65rem; margin-left: auto; }
+
+            /* --- Live Panel --- */
+            .live-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            .live-metric .val { font-size: 1.5rem; }
+            .live-metric .lbl { font-size: 0.55rem; }
+            .live-tip { font-size: 0.78rem; padding: 5px 8px; }
+
+            /* --- Community Stats: 2-col --- */
+            .community-stats {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .community-stat { min-width: unset; padding: 8px 10px; }
+            .community-stat .val { font-size: 1.5rem; }
+            .community-stat .lbl { font-size: 0.55rem; }
+
+            /* --- Trending Rows --- */
+            .trending-row {
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 8px 0;
+            }
+            .trending-bar-bg { min-width: 30px; flex-basis: 100%; order: 5; }
+            .trending-picks { font-size: 0.75rem; }
+            .trending-wr { font-size: 0.75rem; }
+
+            /* --- Loadout Cards --- */
+            .loadout-card { padding: 10px; }
+            .loadout-card .runner { font-size: 0.95rem; }
+            .loadout-card .weapons { font-size: 0.82rem; }
+            .loadout-card .wr { font-size: 0.75rem; }
+
+            /* --- Network --- */
+            .net-row { gap: 8px; font-size: 0.85rem; }
+            .net-val { font-size: 0.8rem; }
+
+            /* --- Tier List --- */
+            .tier-row { gap: 6px; }
+            .tier-runners { font-size: 0.8rem; }
+
+            /* --- TTK Rows: horizontal scroll container --- */
+            .ttk-row {
+                flex-wrap: nowrap;
+                gap: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .ttk-name { min-width: 90px; font-size: 0.78rem; }
+            .ttk-val { font-size: 0.78rem; white-space: nowrap; }
+            .ttk-shots { font-size: 0.7rem; white-space: nowrap; }
+
+            /* --- Hour Bars (Best Time to Play) --- */
+            .hour-bar { gap: 4px; height: 18px; }
+            .hour-label { font-size: 0.6rem; width: 24px; }
+            .hour-fill { height: 12px; }
+
+            /* --- Scout Runner Input --- */
+            .scout-input-row {
+                flex-direction: column;
+                gap: 6px;
+            }
+            .scout-input-row input {
+                width: 100%;
+                min-height: 44px;
+                font-size: 0.9rem;
+            }
+            .scout-input-row button {
+                width: 100%;
+                min-height: 44px;
+                font-size: 1rem;
+            }
+            .scout-result-header { font-size: 1.2rem; }
+            .scout-stat-row { gap: 8px; }
+            .scout-map-tag { font-size: 0.75rem; }
+
+            /* --- Server Status inline flex --- */
+            #serverStatus {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            /* --- Session Decay --- */
+            .decay-arrow { font-size: 1.3rem; margin: 0 4px; }
+
+            /* --- Performance Edge --- */
+            .edge-col { min-width: 100%; }
+            .edge-item { font-size: 0.82rem; padding: 6px 8px; }
+
+            /* --- Queue Prediction --- */
+            .queue-row { gap: 8px; font-size: 0.82rem; flex-wrap: wrap; }
+
+            /* --- Quality Badge --- */
+            .quality-badge { font-size: 0.6rem; }
+
+            /* --- Prevent horizontal overflow globally --- */
+            .dashboard { overflow-x: hidden; }
+        }
+
+        /* ===== SMALL MOBILE (<=400px): Extra compact ===== */
+        @media (max-width: 400px) {
+            .grid { padding: 8px; gap: 10px; }
+            .topbar h1 { font-size: 0.95rem; }
+            .topbar .user { display: none; }
+            .session-stat .val { font-size: 1.3rem; }
+            .live-metric .val { font-size: 1.3rem; }
+            .community-stat .val { font-size: 1.3rem; }
+            .panel { padding: 10px 8px; }
+            .panel-header { font-size: 0.9rem; }
+            .match-map { padding-left: 0; }
         }
     </style>
 </head>

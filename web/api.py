@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
@@ -242,7 +242,30 @@ def create_app(bot) -> FastAPI:
             match.patch,
         )
         await invalidate_match_caches(_redis())
-        return {"status": "recorded"}
+
+        # Generate AI match commentary (non-blocking — failures are swallowed)
+        commentary = None
+        try:
+            ai = _ai()
+            if ai:
+                from services.ai import generate_match_commentary
+                commentary = await generate_match_commentary(ai, {
+                    "runner_name": match.runner_name,
+                    "map_name": match.map_name,
+                    "result": match.result,
+                    "kills": match.kills,
+                    "deaths": match.deaths,
+                    "assists": match.assists,
+                    "damage": match.damage,
+                    "duration_s": match.duration_s,
+                })
+        except Exception as exc:
+            log.debug("Match commentary generation failed: %s", exc)
+
+        response = {"status": "recorded"}
+        if commentary:
+            response["commentary"] = commentary
+        return response
 
     # -- Network --
     @app.post("/api/network")
@@ -1461,6 +1484,163 @@ def create_app(bot) -> FastAPI:
             "network": [dict(r) for r in network],
         }
 
+    # -- SVG Stats Card (OG:image) --
+    @app.get("/api/card/{user_hash}")
+    async def stats_card(user_hash: str):
+        redis = _redis()
+        cache_key = f"marathon:card:{user_hash}"
+        cached = await cache_get(redis, cache_key) if redis else None
+        if cached:
+            return Response(content=cached["svg"], media_type="image/svg+xml",
+                            headers={"Cache-Control": "public, max-age=900"})
+
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+
+        # Aggregate match stats
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins, "
+            "SUM(kills) AS kills, SUM(deaths) AS deaths, "
+            "SUM(damage) AS damage "
+            "FROM matches WHERE user_hash = $1",
+            user_hash,
+        )
+
+        total = int(row["total"]) if row["total"] else 0
+        wins = int(row["wins"]) if row["wins"] else 0
+        kills = int(row["kills"]) if row["kills"] else 0
+        deaths = int(row["deaths"]) if row["deaths"] else 0
+        damage = int(row["damage"]) if row["damage"] else 0
+        win_rate = round(wins / total * 100, 1) if total > 0 else 0
+        kd = round(kills / max(deaths, 1), 2)
+
+        # Most-played runner
+        runner_row = await pool.fetchrow(
+            "SELECT runner_name, COUNT(*) AS cnt FROM matches "
+            "WHERE user_hash = $1 GROUP BY runner_name ORDER BY cnt DESC LIMIT 1",
+            user_hash,
+        )
+        main_runner = runner_row["runner_name"] if runner_row else "N/A"
+
+        # Format damage for display
+        if damage >= 1_000_000:
+            damage_str = f"{damage / 1_000_000:.1f}M"
+        elif damage >= 1_000:
+            damage_str = f"{damage / 1_000:.1f}K"
+        else:
+            damage_str = str(damage)
+
+        # Determine accent colors for stats
+        wr_color = "#00ff88" if win_rate >= 55 else "#ffcc00" if win_rate >= 45 else "#ff4455"
+        kd_color = "#00ff88" if kd >= 1.5 else "#ffcc00" if kd >= 1.0 else "#ff4455"
+
+        # Escape gamertag for SVG/XML safety
+        import html as html_mod
+        safe_tag = html_mod.escape(user_hash)
+
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a0f"/>
+      <stop offset="100%" stop-color="#0f1118"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00ff88"/>
+      <stop offset="100%" stop-color="#00cc6a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Border accent -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
+  <rect x="0" y="626" width="1200" height="4" fill="url(#accent)" opacity="0.3"/>
+
+  <!-- Decorative grid lines -->
+  <line x1="0" y1="140" x2="1200" y2="140" stroke="#00ff88" stroke-opacity="0.08" stroke-width="1"/>
+  <line x1="0" y1="420" x2="1200" y2="420" stroke="#00ff88" stroke-opacity="0.08" stroke-width="1"/>
+  <line x1="80" y1="0" x2="80" y2="630" stroke="#00ff88" stroke-opacity="0.04" stroke-width="1"/>
+  <line x1="1120" y1="0" x2="1120" y2="630" stroke="#00ff88" stroke-opacity="0.04" stroke-width="1"/>
+
+  <!-- Corner accents -->
+  <polyline points="0,40 0,0 40,0" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
+  <polyline points="1160,0 1200,0 1200,40" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
+  <polyline points="0,590 0,630 40,630" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
+  <polyline points="1160,630 1200,630 1200,590" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
+
+  <!-- Header: MARATHON INTEL -->
+  <text x="600" y="75" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="42" font-weight="900" fill="#00ff88" letter-spacing="12">MARATHON INTEL</text>
+
+  <!-- Gamertag -->
+  <text x="600" y="125" text-anchor="middle" font-family="Consolas, monospace"
+        font-size="28" fill="#ffffff" opacity="0.95">{safe_tag}</text>
+
+  <!-- Divider line -->
+  <line x1="300" y1="155" x2="900" y2="155" stroke="#00ff88" stroke-opacity="0.25" stroke-width="1"/>
+
+  <!-- Stats boxes -->
+  <!-- Matches -->
+  <rect x="90" y="190" width="180" height="160" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="180" y="235" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" fill="#8b949e" letter-spacing="3" font-weight="600">MATCHES</text>
+  <text x="180" y="310" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="56" font-weight="900" fill="#ffffff">{total}</text>
+
+  <!-- Win Rate -->
+  <rect x="300" y="190" width="180" height="160" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="390" y="235" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" fill="#8b949e" letter-spacing="3" font-weight="600">WIN RATE</text>
+  <text x="390" y="310" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="56" font-weight="900" fill="{wr_color}">{win_rate}%</text>
+
+  <!-- K/D -->
+  <rect x="510" y="190" width="180" height="160" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="600" y="235" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" fill="#8b949e" letter-spacing="3" font-weight="600">K/D RATIO</text>
+  <text x="600" y="310" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="56" font-weight="900" fill="{kd_color}">{kd}</text>
+
+  <!-- Main Runner -->
+  <rect x="720" y="190" width="180" height="160" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="810" y="235" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" fill="#8b949e" letter-spacing="3" font-weight="600">MAIN RUNNER</text>
+  <text x="810" y="305" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="36" font-weight="900" fill="#00ff88">{html_mod.escape(main_runner)}</text>
+
+  <!-- Total Damage -->
+  <rect x="930" y="190" width="180" height="160" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="1020" y="235" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" fill="#8b949e" letter-spacing="3" font-weight="600">TOTAL DMG</text>
+  <text x="1020" y="310" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
+        font-size="56" font-weight="900" fill="#ffffff">{damage_str}</text>
+
+  <!-- Kill / Death breakdown -->
+  <text x="180" y="430" text-anchor="middle" font-family="Consolas, monospace"
+        font-size="16" fill="#8b949e">{kills} kills / {deaths} deaths</text>
+  <text x="600" y="430" text-anchor="middle" font-family="Consolas, monospace"
+        font-size="16" fill="#8b949e">{wins}W - {total - wins}L</text>
+
+  <!-- Decorative hex pattern (subtle) -->
+  <circle cx="150" cy="530" r="30" fill="none" stroke="#00ff88" stroke-opacity="0.06" stroke-width="1"/>
+  <circle cx="1050" cy="530" r="30" fill="none" stroke="#00ff88" stroke-opacity="0.06" stroke-width="1"/>
+
+  <!-- Branding footer -->
+  <text x="600" y="560" text-anchor="middle" font-family="Consolas, monospace"
+        font-size="14" fill="#00ff88" opacity="0.6">marathon.straightfirefood.blog</text>
+  <text x="600" y="590" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="12" fill="#6b7280">Community Network Capture Intelligence</text>
+</svg>'''
+
+        # Cache for 15 minutes
+        await cache_set(redis, cache_key, {"svg": svg}, 900)
+
+        return Response(content=svg, media_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=900"})
+
     # -- HTML pages served from public/ --
     @app.get("/")
     async def index():
@@ -1514,8 +1694,30 @@ def create_app(bot) -> FastAPI:
     @app.get("/report/{user_hash}")
     async def report_page(user_hash: str):
         f = PUBLIC_DIR / "report.html"
-        if f.exists():
-            return FileResponse(f)
-        raise HTTPException(404)
+        if not f.exists():
+            raise HTTPException(404)
+        import html as html_mod
+        safe_tag = html_mod.escape(user_hash)
+        content = f.read_text()
+        # Replace the existing static OG tags with dynamic ones
+        content = content.replace(
+            '<meta property="og:title" content="Marathon Intel Report">',
+            f'<meta property="og:title" content="{safe_tag} - Marathon Intel Report">',
+        )
+        content = content.replace(
+            '<meta property="og:description" content="Live network capture data from Marathon">',
+            f'<meta property="og:description" content="Player stats and network capture data for {safe_tag}">',
+        )
+        content = content.replace(
+            '<meta property="og:type" content="website">',
+            '<meta property="og:type" content="website">\n'
+            f'    <meta property="og:image" content="/api/card/{safe_tag}">\n'
+            f'    <meta property="og:image:width" content="1200">\n'
+            f'    <meta property="og:image:height" content="630">\n'
+            f'    <meta name="twitter:card" content="summary_large_image">\n'
+            f'    <meta name="twitter:title" content="{safe_tag} - Marathon Intel Report">\n'
+            f'    <meta name="twitter:image" content="/api/card/{safe_tag}">',
+        )
+        return HTMLResponse(content=content)
 
     return app

@@ -242,6 +242,41 @@ async def generate_meta_shift_alert(client: Optional[anthropic.AsyncAnthropic], 
     return await generate_insight(client, META_SHIFT_SYSTEM, prompt, max_tokens=1000)
 
 
+MATCH_COMMENTARY_SYSTEM = """\
+You are Marathon Intel's match commentator. Given match stats, write a short \
+dramatic 2-3 sentence narrative recap — like a broadcast highlight callout. \
+Be vivid, concise, and hype. MUST be under 280 characters total (tweet-length). \
+Never use hashtags or emojis. Reference the runner name, map, and standout stats.
+"""
+
+
+async def generate_match_commentary(
+    client: Optional[anthropic.AsyncAnthropic],
+    match_data: dict,
+) -> Optional[str]:
+    """Generate a short dramatic match recap from match stats."""
+    parts = []
+    if match_data.get("runner_name"):
+        parts.append(f"Runner: {match_data['runner_name']}")
+    if match_data.get("map_name"):
+        parts.append(f"Map: {match_data['map_name']}")
+    if match_data.get("result"):
+        parts.append(f"Result: {match_data['result']}")
+    if match_data.get("kills") is not None:
+        parts.append(f"Kills: {match_data['kills']}")
+    if match_data.get("deaths") is not None:
+        parts.append(f"Deaths: {match_data['deaths']}")
+    if match_data.get("assists") is not None:
+        parts.append(f"Assists: {match_data['assists']}")
+    if match_data.get("damage") is not None:
+        parts.append(f"Damage: {match_data['damage']}")
+    if match_data.get("duration_s") is not None:
+        parts.append(f"Duration: {match_data['duration_s']}s")
+
+    prompt = "Match stats:\n" + "\n".join(parts)
+    return await generate_insight(client, MATCH_COMMENTARY_SYSTEM, prompt, max_tokens=150)
+
+
 async def generate_blog_summary(client: Optional[anthropic.AsyncAnthropic], title: str, content: str) -> Optional[str]:
     system = (
         "You are Marathon Intel. Summarize this Bungie blog post for the Marathon "
