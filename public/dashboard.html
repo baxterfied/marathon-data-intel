@@ -312,7 +312,85 @@
         }
         .queue-row:last-child { border-bottom: none; }
 
+        /* Community Intel Feed */
+        .feed-panel {
+            max-height: 400px; overflow-y: auto; scrollbar-width: thin;
+            scrollbar-color: #30363d #161b22;
+        }
+        .feed-panel::-webkit-scrollbar { width: 6px; }
+        .feed-panel::-webkit-scrollbar-track { background: #161b22; }
+        .feed-panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+        .feed-panel::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        .feed-item {
+            display: flex; align-items: flex-start; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid #1e2228;
+        }
+        .feed-item:last-child { border-bottom: none; }
+        .feed-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-family: 'Space Mono', monospace; font-size: 0.6rem; font-weight: 700;
+            letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .feed-badge-patch  { background: #ff880025; color: #ff8800; border: 1px solid #ff880050; }
+        .feed-badge-meta   { background: #00ff8825; color: #00ff88; border: 1px solid #00ff8850; }
+        .feed-badge-trending { background: #aa44ff25; color: #aa44ff; border: 1px solid #aa44ff50; }
+        .feed-badge-intel  { background: #4488ff25; color: #4488ff; border: 1px solid #4488ff50; }
+        .feed-content { flex: 1; min-width: 0; }
+        .feed-title {
+            font-weight: 600; color: #fff; font-size: 0.9rem; margin-bottom: 2px;
+            word-wrap: break-word;
+        }
+        .feed-body {
+            font-size: 0.82rem; color: #8b949e; line-height: 1.4;
+            word-wrap: break-word;
+        }
+        .feed-time {
+            font-family: 'Space Mono', monospace; font-size: 0.65rem; color: #6b7280;
+            white-space: nowrap; flex-shrink: 0; margin-top: 3px;
+        }
+        @media (max-width: 768px) {
+            .feed-panel { max-height: 300px; }
+            .feed-item { gap: 8px; padding: 8px 0; }
+            .feed-badge { font-size: 0.55rem; padding: 2px 6px; }
+        }
+
         .empty-state { color: #6b7280; font-size: 0.9rem; padding: 20px 0; text-align: center; }
+
+        /* Session Timeline */
+        .timeline-row {
+            display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px;
+        }
+        .timeline-block {
+            width: 28px; height: 28px; border-radius: 4px; display: flex;
+            align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif;
+            font-size: 0.75rem; color: #0a0a0f; cursor: pointer; position: relative;
+            transition: transform 0.15s, box-shadow 0.15s; flex-shrink: 0;
+        }
+        .timeline-block:hover { transform: scale(1.25); z-index: 10; box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+        .timeline-block.tl-win  { background: #00ff88; }
+        .timeline-block.tl-loss { background: #ff4455; color: #fff; }
+        .timeline-block.tl-draw { background: #ffcc00; }
+        .timeline-tooltip {
+            display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+            background: #1a1d24; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px;
+            font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #e0e0e0;
+            white-space: nowrap; z-index: 100; pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .timeline-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+            border: 5px solid transparent; border-top-color: #30363d;
+        }
+        .timeline-block:hover .timeline-tooltip { display: block; }
+        .timeline-streak {
+            margin-top: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem;
+            letter-spacing: 2px;
+        }
+        .timeline-streak.streak-win  { color: #00ff88; }
+        .timeline-streak.streak-loss { color: #ff4455; }
+        .timeline-streak.streak-draw { color: #ffcc00; }
+        .timeline-streak.streak-none { color: #6b7280; }
 
         /* ===== TABLET (<=900px): 2-column layout ===== */
         @media (max-width: 900px) {
@@ -513,6 +591,9 @@
             .edge-col { min-width: 100%; }
             .edge-item { font-size: 0.82rem; padding: 6px 8px; }
 
+            /* --- Session Timeline --- */
+            .timeline-block { width: 22px; height: 22px; font-size: 0.65rem; }
+
             /* --- Queue Prediction --- */
             .queue-row { gap: 8px; font-size: 0.82rem; flex-wrap: wrap; }
 
@@ -575,6 +656,12 @@
             <div id="liveContent">
                 <div class="live-offline-msg">Run the capture agent to see live match data here</div>
             </div>
+        </div>
+
+        <!-- Session Timeline -->
+        <div class="panel grid-full" id="timelinePanel">
+            <div class="panel-header"><span class="icon">&#128202;</span> SESSION TIMELINE</div>
+            <div id="timelineContent"><div class="empty-state">Loading timeline...</div></div>
         </div>
 
         <!-- Session Overview -->
@@ -667,6 +754,14 @@
             </div>
         </div>
 
+        <!-- Community Intel Feed -->
+        <div class="panel grid-2">
+            <div class="panel-header"><span class="icon">&#128225;</span> COMMUNITY INTEL</div>
+            <div class="feed-panel" id="feedPanel">
+                <div class="empty-state">Loading intel feed...</div>
+            </div>
+        </div>
+
         <!-- Trending Runners -->
         <div class="panel">
             <div class="panel-header"><span class="icon">&#128293;</span> TRENDING NOW</div>
@@ -730,6 +825,7 @@ async function refreshAll() {
     document.getElementById('refreshInfo').textContent = 'Refreshing...';
     await Promise.all([
         loadRecap(),
+        loadTimeline(),
         loadStreaks(),
         loadNetwork(),
         loadMeta(),
@@ -743,6 +839,7 @@ async function refreshAll() {
         loadPerformance(),
         loadCommunityLive(),
         loadTrending(),
+        loadFeed(),
     ]);
     document.getElementById('refreshInfo').textContent =
         'Updated ' + new Date().toLocaleTimeString() + ' · Auto-refresh 30s';
@@ -795,6 +892,51 @@ async function loadRecap() {
 
     } catch {
         document.getElementById('recentMatches').innerHTML = '<div class="empty-state">No match data yet — submit matches or run the capture agent</div>';
+    }
+}
+
+async function loadTimeline() {
+    try {
+        const res = await fetch(`/api/matches/${encodeURIComponent(userHash)}?limit=30`);
+        if (!res.ok) throw new Error('No data');
+        const d = await res.json();
+        const matches = d.matches || [];
+        if (!matches.length) {
+            document.getElementById('timelineContent').innerHTML = '<div class="empty-state">No matches yet</div>';
+            return;
+        }
+        // Oldest first so most recent is on the right
+        const sorted = [...matches].reverse();
+        let blocksHtml = '<div class="timeline-row">';
+        sorted.forEach(m => {
+            const cls = m.result === 'win' ? 'tl-win' : m.result === 'loss' ? 'tl-loss' : 'tl-draw';
+            const initial = (m.runner_name || '?')[0].toUpperCase();
+            const kd = `${m.kills}/${m.deaths}`;
+            const dmg = m.damage || 0;
+            const date = m.created_at ? new Date(m.created_at).toLocaleDateString() : '';
+            blocksHtml += `<div class="timeline-block ${cls}">
+                ${initial}
+                <div class="timeline-tooltip">
+                    <strong>${m.runner_name}</strong><br>
+                    ${m.map_name} &middot; ${kd} K/D<br>
+                    ${dmg.toLocaleString()} dmg &middot; ${date}
+                </div>
+            </div>`;
+        });
+        blocksHtml += '</div>';
+        // Calculate current streak
+        let streakType = matches[0].result;
+        let streakCount = 0;
+        for (const m of matches) {
+            if (m.result === streakType) streakCount++;
+            else break;
+        }
+        const streakLabel = streakType === 'win' ? 'W' : streakType === 'loss' ? 'L' : 'D';
+        const streakCls = streakType === 'win' ? 'streak-win' : streakType === 'loss' ? 'streak-loss' : 'streak-draw';
+        blocksHtml += `<div class="timeline-streak ${streakCls}">${streakLabel}${streakCount}</div>`;
+        document.getElementById('timelineContent').innerHTML = blocksHtml;
+    } catch {
+        document.getElementById('timelineContent').innerHTML = '<div class="empty-state">No timeline data</div>';
     }
 }
 
@@ -1293,6 +1435,41 @@ async function loadTrending() {
         document.getElementById('trendingPanel').innerHTML = html;
     } catch {
         document.getElementById('trendingPanel').innerHTML = '<div class="empty-state">No trending data available</div>';
+    }
+}
+
+async function loadFeed() {
+    try {
+        const res = await fetch('/api/feed');
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+
+        if (!d.feed || !d.feed.length) throw new Error('empty');
+
+        const badgeMap = {
+            patch: { label: 'PATCH', cls: 'feed-badge-patch' },
+            meta: { label: 'META', cls: 'feed-badge-meta' },
+            trending: { label: 'TRENDING', cls: 'feed-badge-trending' },
+            intel: { label: 'INTEL', cls: 'feed-badge-intel' },
+        };
+
+        const html = d.feed.map(item => {
+            const badge = badgeMap[item.type] || badgeMap.intel;
+            const ago = timeAgo(item.timestamp);
+            const body = item.body || '';
+            return `<div class="feed-item">
+                <span class="feed-badge ${badge.cls}">${badge.label}</span>
+                <div class="feed-content">
+                    <div class="feed-title">${item.title}</div>
+                    <div class="feed-body">${body}</div>
+                </div>
+                <span class="feed-time">${ago}</span>
+            </div>`;
+        }).join('');
+
+        document.getElementById('feedPanel').innerHTML = html;
+    } catch {
+        document.getElementById('feedPanel').innerHTML = '<div class="empty-state">No intel feed data available</div>';
     }
 }
 

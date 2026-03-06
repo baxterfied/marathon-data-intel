@@ -255,6 +255,23 @@ CREATE TABLE IF NOT EXISTS match_sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON match_sessions (user_hash, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_region ON match_sessions (region);
 
+-- crew_finder (LFG system)
+CREATE TABLE IF NOT EXISTS crew_finder (
+    id SERIAL PRIMARY KEY,
+    discord_user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    region TEXT NOT NULL DEFAULT 'any',
+    playstyle TEXT NOT NULL DEFAULT 'any',
+    main_runner TEXT NOT NULL DEFAULT 'any',
+    play_times TEXT NOT NULL DEFAULT 'any',
+    message TEXT NOT NULL DEFAULT '',
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_finder_user ON crew_finder (discord_user_id);
+CREATE INDEX IF NOT EXISTS idx_crew_finder_active ON crew_finder (active, region);
+
 -- seed runners (real Marathon roster)
 INSERT INTO runners (name, role, base_hp, base_speed, tier, abilities) VALUES
     ('ASSASSIN', 'stealth', 90, 1.3, 'A', '["Shadow Strike"]'::jsonb),
@@ -265,6 +282,32 @@ INSERT INTO runners (name, role, base_hp, base_speed, tier, abilities) VALUES
     ('TRIAGE', 'support', 100, 1.0, 'A', '["Field Medic"]'::jsonb),
     ('VANDAL', 'assault', 110, 1.05, 'A', '["Combat Anarchy"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
+
+-- seasons (seasonal ladder)
+CREATE TABLE IF NOT EXISTS seasons (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at TIMESTAMPTZ,
+    active BOOLEAN NOT NULL DEFAULT true
+);
+
+-- seasonal_ratings (SR ladder per season)
+CREATE TABLE IF NOT EXISTS seasonal_ratings (
+    id SERIAL PRIMARY KEY,
+    season_id INT NOT NULL,
+    user_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    sr INT NOT NULL DEFAULT 1000,
+    tier TEXT NOT NULL DEFAULT 'Bronze',
+    matches INT NOT NULL DEFAULT 0,
+    wins INT NOT NULL DEFAULT 0,
+    losses INT NOT NULL DEFAULT 0,
+    peak_sr INT NOT NULL DEFAULT 1000,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(season_id, user_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_seasonal_ratings_season ON seasonal_ratings (season_id, sr DESC);
 """
 
 
@@ -301,3 +344,99 @@ async def close_db(pool: Optional[asyncpg.Pool]) -> None:
     if pool is not None:
         await pool.close()
         log.info("PostgreSQL pool closed")
+
+
+# -- SR tier helpers --
+
+SR_TIERS = [
+    (2500, "Champion"),
+    (2000, "Platinum"),
+    (1400, "Gold"),
+    (800, "Silver"),
+    (0, "Bronze"),
+]
+
+
+def sr_to_tier(sr: int) -> str:
+    """Return the tier name for a given SR value."""
+    for threshold, name in SR_TIERS:
+        if sr >= threshold:
+            return name
+    return "Bronze"
+
+
+async def update_sr(
+    pool: asyncpg.Pool,
+    user_hash: str,
+    display_name: str,
+    result: str,
+    kills: int,
+    deaths: int,
+) -> Optional[dict]:
+    """Calculate and apply SR change for a match result.
+
+    Returns dict with new_sr, tier, sr_change or None if no active season.
+    """
+    # Get or create active season
+    season = await pool.fetchrow(
+        "SELECT id FROM seasons WHERE active = true ORDER BY started_at DESC LIMIT 1"
+    )
+    if not season:
+        # Auto-create first season
+        season = await pool.fetchrow(
+            "INSERT INTO seasons (name) VALUES ('Season 1') "
+            "ON CONFLICT (name) DO UPDATE SET name = seasons.name "
+            "RETURNING id"
+        )
+    if not season:
+        return None
+    season_id = season["id"]
+
+    # Get or create rating row
+    row = await pool.fetchrow(
+        "SELECT sr, matches, wins, losses, peak_sr FROM seasonal_ratings "
+        "WHERE season_id = $1 AND user_hash = $2",
+        season_id, user_hash,
+    )
+
+    current_sr = row["sr"] if row else 1000
+    matches = row["matches"] if row else 0
+    wins = row["wins"] if row else 0
+    losses = row["losses"] if row else 0
+    peak_sr = row["peak_sr"] if row else 1000
+
+    # K/D ratio
+    kd = kills / deaths if deaths > 0 else float(kills) if kills > 0 else 1.0
+
+    # SR calculation
+    if result == "win":
+        sr_change = 25
+        if kd > 2.0:
+            sr_change += 5
+        elif kd < 0.5:
+            sr_change -= 5
+        wins += 1
+    elif result == "loss":
+        if kd > 2.0:
+            sr_change = -10  # good performance in a loss
+        else:
+            sr_change = -20
+        losses += 1
+    else:  # draw
+        sr_change = 5
+
+    new_sr = max(0, current_sr + sr_change)
+    matches += 1
+    peak_sr = max(peak_sr, new_sr)
+    tier = sr_to_tier(new_sr)
+
+    # Upsert
+    await pool.execute(
+        "INSERT INTO seasonal_ratings (season_id, user_hash, display_name, sr, tier, matches, wins, losses, peak_sr, updated_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now()) "
+        "ON CONFLICT (season_id, user_hash) DO UPDATE SET "
+        "display_name = $3, sr = $4, tier = $5, matches = $6, wins = $7, losses = $8, peak_sr = $9, updated_at = now()",
+        season_id, user_hash, display_name, new_sr, tier, matches, wins, losses, peak_sr,
+    )
+
+    return {"new_sr": new_sr, "tier": tier, "sr_change": sr_change, "peak_sr": peak_sr}

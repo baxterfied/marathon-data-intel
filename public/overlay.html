@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Marathon Intel - Stream Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1920px;
+    height: 1080px;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+    color: #e0e0e0;
+  }
+
+  #overlay {
+    position: absolute;
+    bottom: 32px;
+    left: 32px;
+    width: 300px;
+    background: rgba(10, 10, 15, 0.82);
+    border: 1px solid rgba(0, 255, 136, 0.25);
+    border-radius: 8px;
+    padding: 14px 16px 12px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: opacity 0.4s ease;
+  }
+
+  #overlay.offline {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Header row */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .logo {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #00ff88;
+    opacity: 0.7;
+  }
+
+  .state-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #666;
+    transition: background 0.3s ease, color 0.3s ease;
+  }
+
+  .state-badge.in_match {
+    background: rgba(0, 255, 136, 0.15);
+    color: #00ff88;
+  }
+
+  .state-badge.queuing {
+    background: rgba(255, 200, 0, 0.12);
+    color: #ffc800;
+  }
+
+  .state-badge.idle {
+    background: rgba(255, 255, 255, 0.06);
+    color: #888;
+  }
+
+  .state-badge.offline {
+    background: rgba(255, 255, 255, 0.04);
+    color: #555;
+  }
+
+  /* Stat rows */
+  .stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    line-height: 1;
+    transition: opacity 0.3s ease;
+  }
+
+  .stat-label {
+    color: #777;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .stat-value {
+    font-weight: 700;
+    color: #e0e0e0;
+    font-size: 13px;
+    transition: color 0.3s ease;
+  }
+
+  .stat-value.accent {
+    color: #00ff88;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 8px 0;
+  }
+
+  /* Duration timer */
+  .timer {
+    font-size: 18px;
+    font-weight: 700;
+    color: #00ff88;
+    text-align: center;
+    letter-spacing: 2px;
+    padding: 4px 0 2px;
+    transition: opacity 0.3s ease;
+  }
+
+  .timer.hidden { display: none; }
+
+  /* Offline message */
+  .offline-msg {
+    text-align: center;
+    color: #444;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 0;
+  }
+
+  /* Fade transition on data refresh */
+  .fade-update {
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0.6; }
+    to   { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <div class="header">
+    <span class="logo">Marathon Intel</span>
+    <span class="state-badge offline" id="stateBadge">OFFLINE</span>
+  </div>
+
+  <div id="liveContent">
+    <div class="offline-msg" id="offlineMsg">No live data</div>
+
+    <div id="activeStats" style="display:none;">
+      <div class="timer hidden" id="matchTimer">00:00</div>
+
+      <div class="stats">
+        <div class="stat-row">
+          <span class="stat-label">Record</span>
+          <span class="stat-value" id="record">0W - 0L</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">K / D</span>
+          <span class="stat-value" id="kd">0 / 0</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="stat-row">
+          <span class="stat-label">Region</span>
+          <span class="stat-value" id="region">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Ping</span>
+          <span class="stat-value" id="ping">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Extract user_hash from URL path: /overlay/{user_hash}
+  const pathParts = window.location.pathname.split('/');
+  const userHash = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+
+  if (!userHash || userHash === 'overlay') {
+    document.getElementById('offlineMsg').textContent = 'Missing user hash';
+    return;
+  }
+
+  const els = {
+    overlay:    document.getElementById('overlay'),
+    badge:      document.getElementById('stateBadge'),
+    offlineMsg: document.getElementById('offlineMsg'),
+    active:     document.getElementById('activeStats'),
+    timer:      document.getElementById('matchTimer'),
+    record:     document.getElementById('record'),
+    kd:         document.getElementById('kd'),
+    region:     document.getElementById('region'),
+    ping:       document.getElementById('ping'),
+  };
+
+  const stateLabels = {
+    in_match: 'IN MATCH',
+    queuing:  'IN QUEUE',
+    idle:     'IDLE',
+    offline:  'OFFLINE',
+  };
+
+  function formatDuration(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function update(data) {
+    const state = data.state || 'offline';
+    const isLive = state !== 'offline';
+
+    // State badge
+    els.badge.textContent = stateLabels[state] || state.toUpperCase().replace('_', ' ');
+    els.badge.className = 'state-badge ' + state;
+
+    // Toggle offline class on container
+    els.overlay.classList.toggle('offline', !isLive);
+
+    if (!isLive) {
+      els.offlineMsg.style.display = '';
+      els.active.style.display = 'none';
+      els.offlineMsg.textContent = 'No live data';
+      return;
+    }
+
+    els.offlineMsg.style.display = 'none';
+    els.active.style.display = '';
+
+    // Session record
+    const w = data.session_wins || 0;
+    const l = data.session_losses || 0;
+    els.record.textContent = w + 'W - ' + l + 'L';
+
+    // K/D from session aggregates
+    const kills  = data.session_kills  != null ? data.session_kills  : '--';
+    const deaths = data.session_deaths != null ? data.session_deaths : '--';
+    els.kd.textContent = kills + ' / ' + deaths;
+
+    // Region
+    const region = data.region || '--';
+    els.region.textContent = region !== 'unknown' ? region.toUpperCase() : '--';
+
+    // Ping
+    const ping = data.ping_ms;
+    if (ping != null && ping > 0) {
+      els.ping.textContent = Math.round(ping) + ' ms';
+      els.ping.classList.toggle('accent', ping < 50);
+    } else {
+      els.ping.textContent = '--';
+      els.ping.classList.remove('accent');
+    }
+
+    // Match timer
+    if (state === 'in_match' && data.match_duration_s > 0) {
+      els.timer.classList.remove('hidden');
+      els.timer.textContent = formatDuration(data.match_duration_s);
+    } else {
+      els.timer.classList.add('hidden');
+    }
+
+    // Trigger fade animation
+    els.active.classList.remove('fade-update');
+    void els.active.offsetWidth; // reflow
+    els.active.classList.add('fade-update');
+  }
+
+  async function fetchData() {
+    try {
+      const resp = await fetch('/api/overlay/' + encodeURIComponent(userHash));
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      update(data);
+    } catch (e) {
+      update({ state: 'offline' });
+    }
+  }
+
+  // Initial fetch + interval
+  fetchData();
+  setInterval(fetchData, 10000);
+})();
+</script>
+</body>
+</html>

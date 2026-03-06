@@ -2,6 +2,8 @@
 
 import json
 import logging
+from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
 
 import config
+from services.database import update_sr
 from services.redis_cache import (
     cache_get, cache_set, invalidate_match_caches,
     TTL_COMMUNITY_STATS, TTL_LEADERBOARD, TTL_META, TTL_AI_INSIGHT,
@@ -221,6 +224,19 @@ def create_app(bot) -> FastAPI:
         )
         return {"matches": [dict(r) for r in rows]}
 
+    @app.get("/api/matches/{user_hash}")
+    async def get_user_matches(user_hash: str, limit: int = 30):
+        """Return the last N matches for a user, newest first."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        limit = min(max(limit, 1), 200)
+        rows = await pool.fetch(
+            "SELECT * FROM matches WHERE user_hash = $1 ORDER BY created_at DESC LIMIT $2",
+            user_hash, limit,
+        )
+        return {"matches": [dict(r) for r in rows]}
+
     # -- Matches --
     @app.post("/api/matches")
     async def submit_match(match: MatchSubmission, request: Request, x_api_key: Optional[str] = Header(None)):
@@ -243,6 +259,16 @@ def create_app(bot) -> FastAPI:
         )
         await invalidate_match_caches(_redis())
 
+        # Update seasonal ladder SR
+        sr_result = None
+        try:
+            sr_result = await update_sr(
+                pool, match.user_hash, match.user_hash,
+                match.result, match.kills, match.deaths,
+            )
+        except Exception as exc:
+            log.debug("SR update failed: %s", exc)
+
         # Generate AI match commentary (non-blocking — failures are swallowed)
         commentary = None
         try:
@@ -263,6 +289,8 @@ def create_app(bot) -> FastAPI:
             log.debug("Match commentary generation failed: %s", exc)
 
         response = {"status": "recorded"}
+        if sr_result:
+            response["sr"] = sr_result
         if commentary:
             response["commentary"] = commentary
         return response
@@ -807,6 +835,44 @@ def create_app(bot) -> FastAPI:
         data["active"] = True
         data["tips"] = tips
         return data
+
+    # -- Overlay (Twitch browser source) --
+    @app.get("/api/overlay/{user_hash}")
+    async def overlay_data(user_hash: str):
+        """Combined live status + session aggregates for stream overlay."""
+        redis = _redis()
+        live = await cache_get(redis, f"marathon:live:{user_hash}")
+
+        if not live:
+            return {"state": "offline"}
+
+        result = {
+            "state": live.get("state", "idle"),
+            "region": live.get("region", "unknown"),
+            "ping_ms": live.get("ping_ms", 0),
+            "match_duration_s": live.get("match_duration_s", 0),
+            "session_wins": live.get("session_wins", 0),
+            "session_losses": live.get("session_losses", 0),
+        }
+
+        # Pull session kill/death aggregates from DB (today's matches)
+        pool = _pool()
+        if pool:
+            try:
+                row = await pool.fetchrow(
+                    "SELECT COALESCE(SUM(kills), 0) AS kills, "
+                    "COALESCE(SUM(deaths), 0) AS deaths "
+                    "FROM matches WHERE user_hash = $1 "
+                    "AND created_at >= CURRENT_DATE",
+                    user_hash,
+                )
+                if row:
+                    result["session_kills"] = int(row["kills"])
+                    result["session_deaths"] = int(row["deaths"])
+            except Exception:
+                pass
+
+        return result
 
     # -- Map Stats --
     @app.get("/api/maps")
@@ -1691,6 +1757,13 @@ def create_app(bot) -> FastAPI:
             return FileResponse(f)
         raise HTTPException(404)
 
+    @app.get("/overlay/{user_hash}")
+    async def overlay_page(user_hash: str):
+        f = PUBLIC_DIR / "overlay.html"
+        if f.exists():
+            return FileResponse(f)
+        raise HTTPException(404)
+
     @app.get("/report/{user_hash}")
     async def report_page(user_hash: str):
         f = PUBLIC_DIR / "report.html"
@@ -1716,6 +1789,384 @@ def create_app(bot) -> FastAPI:
             f'    <meta property="og:image:height" content="630">\n'
             f'    <meta name="twitter:card" content="summary_large_image">\n'
             f'    <meta name="twitter:title" content="{safe_tag} - Marathon Intel Report">\n'
+            f'    <meta name="twitter:image" content="/api/card/{safe_tag}">',
+        )
+        return HTMLResponse(content=content)
+
+    # -- Community Intel Feed --
+    @app.get("/api/feed")
+    async def intel_feed():
+        """Aggregated community intel feed with recent activity across all data sources."""
+        redis = _redis()
+        cached = await cache_get(redis, "marathon:feed")
+        if cached:
+            return cached
+
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+
+        feed_items = []
+        now = datetime.now(timezone.utc)
+
+        # 1. Recent patch notes with AI analysis
+        try:
+            patches = await pool.fetch(
+                "SELECT version, title, summary, ai_analysis, released_at "
+                "FROM patch_notes ORDER BY released_at DESC LIMIT 3"
+            )
+            for p in patches:
+                body = p["summary"] or ""
+                if p["ai_analysis"]:
+                    body += f" | AI: {p['ai_analysis'][:200]}"
+                feed_items.append({
+                    "type": "patch",
+                    "title": f"Patch {p['version']}: {p['title'] or 'Update'}",
+                    "body": body[:300],
+                    "timestamp": str(p["released_at"]) if p["released_at"] else str(now),
+                })
+        except Exception as exc:
+            log.warning("Feed: patches query failed: %s", exc)
+
+        # 2. Meta shifts from AI insights
+        try:
+            shifts = await pool.fetch(
+                "SELECT title, content, created_at FROM ai_insights "
+                "WHERE insight_type = 'meta_shift' "
+                "ORDER BY created_at DESC LIMIT 3"
+            )
+            for s in shifts:
+                feed_items.append({
+                    "type": "meta",
+                    "title": s["title"] or "Meta Shift Detected",
+                    "body": (s["content"] or "")[:300],
+                    "timestamp": str(s["created_at"]),
+                })
+        except Exception as exc:
+            log.warning("Feed: meta shifts query failed: %s", exc)
+
+        # 3. Trending runners (last 2 hours)
+        try:
+            trending = await pool.fetch(
+                "SELECT runner_name, COUNT(*) AS picks, "
+                "ROUND(COUNT(*) FILTER (WHERE result = 'win')::numeric / GREATEST(COUNT(*), 1) * 100, 1) AS win_rate "
+                "FROM matches WHERE created_at > now() - INTERVAL '2 hours' "
+                "GROUP BY runner_name ORDER BY picks DESC LIMIT 5"
+            )
+            if trending:
+                top_names = ", ".join(f"{r['runner_name']} ({r['picks']} picks, {r['win_rate']}% WR)" for r in trending[:3])
+                feed_items.append({
+                    "type": "trending",
+                    "title": "Trending Runners Right Now",
+                    "body": f"Top picks in the last 2h: {top_names}",
+                    "timestamp": str(now),
+                })
+        except Exception as exc:
+            log.warning("Feed: trending query failed: %s", exc)
+
+        # 4. Recent blog post summaries
+        try:
+            posts = await pool.fetch(
+                "SELECT title, summary, created_at FROM blog_posts "
+                "ORDER BY created_at DESC LIMIT 2"
+            )
+            for p in posts:
+                feed_items.append({
+                    "type": "intel",
+                    "title": p["title"] or "Intel Report",
+                    "body": (p["summary"] or "")[:300],
+                    "timestamp": str(p["created_at"]),
+                })
+        except Exception as exc:
+            log.warning("Feed: blog query failed: %s", exc)
+
+        # 5. Active community stats
+        try:
+            agents_online = 0
+            if redis:
+                count = 0
+                async for _key in redis.scan_iter(match="marathon:live:*"):
+                    count += 1
+                agents_online = count
+
+            matches_today_row = await pool.fetchrow(
+                "SELECT COUNT(*) AS cnt FROM matches WHERE created_at > now() - INTERVAL '24 hours'"
+            )
+            matches_today = matches_today_row["cnt"] if matches_today_row else 0
+
+            if agents_online > 0 or matches_today > 0:
+                feed_items.append({
+                    "type": "intel",
+                    "title": "Community Activity",
+                    "body": f"{agents_online} agents online, {matches_today} matches in the last 24h.",
+                    "timestamp": str(now),
+                })
+        except Exception as exc:
+            log.warning("Feed: community stats query failed: %s", exc)
+
+        # Sort by timestamp descending
+        feed_items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+        result = {"feed": feed_items}
+        await cache_set(redis, "marathon:feed", result, TTL_COMMUNITY_STATS)  # 5 min
+        return result
+
+    # -- Seasonal Ladder --
+
+    @app.get("/api/ladder")
+    async def ladder(limit: int = 100):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        season = await pool.fetchrow(
+            "SELECT id, name FROM seasons WHERE active = true ORDER BY started_at DESC LIMIT 1"
+        )
+        if not season:
+            return {"season": None, "ladder": []}
+        limit = min(limit, 100)
+        rows = await pool.fetch(
+            "SELECT user_hash, display_name, sr, tier, matches, wins, losses, peak_sr, updated_at "
+            "FROM seasonal_ratings WHERE season_id = $1 ORDER BY sr DESC LIMIT $2",
+            season["id"], limit,
+        )
+        ladder_list = []
+        for rank, r in enumerate(rows, 1):
+            ladder_list.append({
+                "rank": rank,
+                "user_hash": r["user_hash"],
+                "display_name": r["display_name"],
+                "sr": r["sr"],
+                "tier": r["tier"],
+                "matches": r["matches"],
+                "wins": r["wins"],
+                "losses": r["losses"],
+                "peak_sr": r["peak_sr"],
+                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            })
+        return {"season": {"id": season["id"], "name": season["name"]}, "ladder": ladder_list}
+
+    @app.get("/api/ladder/{user_hash}")
+    async def ladder_player(user_hash: str):
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        season = await pool.fetchrow(
+            "SELECT id, name FROM seasons WHERE active = true ORDER BY started_at DESC LIMIT 1"
+        )
+        if not season:
+            raise HTTPException(404, "No active season")
+        row = await pool.fetchrow(
+            "SELECT user_hash, display_name, sr, tier, matches, wins, losses, peak_sr, updated_at "
+            "FROM seasonal_ratings WHERE season_id = $1 AND user_hash = $2",
+            season["id"], user_hash,
+        )
+        if not row:
+            raise HTTPException(404, "Player not found in current season")
+        # Calculate rank
+        rank_row = await pool.fetchrow(
+            "SELECT COUNT(*) + 1 AS rank FROM seasonal_ratings "
+            "WHERE season_id = $1 AND sr > $2",
+            season["id"], row["sr"],
+        )
+        return {
+            "season": {"id": season["id"], "name": season["name"]},
+            "rank": int(rank_row["rank"]) if rank_row else 0,
+            "user_hash": row["user_hash"],
+            "display_name": row["display_name"],
+            "sr": row["sr"],
+            "tier": row["tier"],
+            "matches": row["matches"],
+            "wins": row["wins"],
+            "losses": row["losses"],
+            "peak_sr": row["peak_sr"],
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    @app.get("/api/seasons")
+    async def list_seasons():
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+        rows = await pool.fetch(
+            "SELECT id, name, started_at, ended_at, active FROM seasons ORDER BY started_at DESC"
+        )
+        return {"seasons": [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+                "ended_at": r["ended_at"].isoformat() if r["ended_at"] else None,
+                "active": r["active"],
+            }
+            for r in rows
+        ]}
+
+    # -- Player Profile --
+    @app.get("/api/player/{user_hash}")
+    async def player_profile(user_hash: str):
+        """Comprehensive player profile data."""
+        pool = _pool()
+        if not pool:
+            raise HTTPException(503, "Database offline")
+
+        # All matches for this player
+        matches = await pool.fetch(
+            "SELECT runner_name, map_name, result, kills, deaths, assists, damage, duration_s, created_at "
+            "FROM matches WHERE user_hash = $1 ORDER BY created_at DESC",
+            user_hash,
+        )
+        if not matches:
+            raise HTTPException(404, "No data found for this player")
+
+        total = len(matches)
+        wins = sum(1 for m in matches if m["result"] == "win")
+        losses = sum(1 for m in matches if m["result"] == "loss")
+        kills = sum(m["kills"] for m in matches)
+        deaths = sum(m["deaths"] for m in matches)
+        total_damage = sum(m["damage"] for m in matches)
+        total_duration = sum(m["duration_s"] for m in matches)
+        avg_damage = round(total_damage / total, 1) if total > 0 else 0
+        kd = round(kills / max(deaths, 1), 2)
+        win_rate = round(wins / total * 100, 1) if total > 0 else 0
+
+        # Member since
+        member_since = matches[-1]["created_at"].isoformat() if matches else None
+
+        # Main runner
+        runner_counts: dict[str, int] = defaultdict(int)
+        for m in matches:
+            runner_counts[m["runner_name"]] += 1
+        main_runner = max(runner_counts, key=runner_counts.get) if runner_counts else None
+
+        # Rank from leaderboard_cache
+        rank_row = await pool.fetchrow(
+            "SELECT rank FROM leaderboard_cache WHERE user_hash = $1", user_hash
+        )
+        rank = int(rank_row["rank"]) if rank_row and rank_row["rank"] else None
+
+        # Per-runner breakdown with comfort score
+        runner_data: dict[str, dict] = defaultdict(lambda: {
+            "wins": 0, "losses": 0, "matches": 0,
+            "kills": 0, "deaths": 0, "damage": 0,
+        })
+        for m in matches:
+            rd = runner_data[m["runner_name"]]
+            rd["matches"] += 1
+            if m["result"] == "win":
+                rd["wins"] += 1
+            elif m["result"] == "loss":
+                rd["losses"] += 1
+            rd["kills"] += m["kills"]
+            rd["deaths"] += m["deaths"]
+            rd["damage"] += m["damage"]
+
+        runners_list = []
+        for rname, rd in runner_data.items():
+            r_wr = round(rd["wins"] / rd["matches"] * 100, 1) if rd["matches"] > 0 else 0
+            r_kd = round(rd["kills"] / max(rd["deaths"], 1), 2)
+            comfort = min(100, round((rd["matches"] * 2) + (r_wr * 0.5)))
+            runners_list.append({
+                "runner_name": rname,
+                "matches": rd["matches"],
+                "wins": rd["wins"],
+                "losses": rd["losses"],
+                "win_rate": r_wr,
+                "kd": r_kd,
+                "avg_damage": round(rd["damage"] / rd["matches"], 1) if rd["matches"] > 0 else 0,
+                "comfort_score": comfort,
+            })
+        runners_list.sort(key=lambda x: -x["matches"])
+
+        # Per-map breakdown
+        map_data: dict[str, dict] = defaultdict(lambda: {"wins": 0, "matches": 0})
+        for m in matches:
+            md = map_data[m["map_name"]]
+            md["matches"] += 1
+            if m["result"] == "win":
+                md["wins"] += 1
+        maps_list = []
+        for mname, md in map_data.items():
+            m_wr = round(md["wins"] / md["matches"] * 100, 1) if md["matches"] > 0 else 0
+            maps_list.append({
+                "map_name": mname,
+                "matches": md["matches"],
+                "wins": md["wins"],
+                "win_rate": m_wr,
+            })
+        maps_list.sort(key=lambda x: -x["matches"])
+
+        # Last 20 matches
+        recent = []
+        for m in matches[:20]:
+            recent.append({
+                "runner_name": m["runner_name"],
+                "map_name": m["map_name"],
+                "result": m["result"],
+                "kills": m["kills"],
+                "deaths": m["deaths"],
+                "assists": m["assists"],
+                "damage": m["damage"],
+                "duration_s": m["duration_s"],
+                "created_at": m["created_at"].isoformat() if m["created_at"] else None,
+            })
+
+        # Network stats summary from match_sessions
+        net_rows = await pool.fetch(
+            "SELECT region, "
+            "ROUND(AVG(peak_ping_ms)::numeric, 1) AS peak_ping, "
+            "ROUND(AVG(avg_ping_ms)::numeric, 1) AS avg_ping, "
+            "COUNT(*) AS sessions "
+            "FROM match_sessions WHERE user_hash = $1 "
+            "GROUP BY region ORDER BY sessions DESC",
+            user_hash,
+        )
+        network = [dict(r) for r in net_rows]
+
+        return {
+            "user_hash": user_hash,
+            "member_since": member_since,
+            "overall": {
+                "total_matches": total,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": win_rate,
+                "kd": kd,
+                "avg_damage": avg_damage,
+                "total_damage": total_damage,
+                "total_duration_s": total_duration,
+                "main_runner": main_runner,
+                "rank": rank,
+            },
+            "runners": runners_list,
+            "maps": maps_list,
+            "recent_matches": recent,
+            "network": network,
+        }
+
+    @app.get("/player/{user_hash}")
+    async def player_page(user_hash: str):
+        f = PUBLIC_DIR / "player.html"
+        if not f.exists():
+            raise HTTPException(404)
+        import html as html_mod
+        safe_tag = html_mod.escape(user_hash)
+        content = f.read_text()
+        content = content.replace(
+            '<meta property="og:title" content="Player Profile - Marathon Intel">',
+            f'<meta property="og:title" content="{safe_tag} - Marathon Intel">',
+        )
+        content = content.replace(
+            '<meta property="og:description" content="Player stats and performance data from Marathon">',
+            f'<meta property="og:description" content="Stats, runners, and match history for {safe_tag} on Marathon Intel">',
+        )
+        content = content.replace(
+            '<meta property="og:type" content="website">',
+            '<meta property="og:type" content="website">\n'
+            f'    <meta property="og:image" content="/api/card/{safe_tag}">\n'
+            f'    <meta property="og:image:width" content="1200">\n'
+            f'    <meta property="og:image:height" content="630">\n'
+            f'    <meta name="twitter:card" content="summary_large_image">\n'
+            f'    <meta name="twitter:title" content="{safe_tag} - Marathon Intel">\n'
             f'    <meta name="twitter:image" content="/api/card/{safe_tag}">',
         )
         return HTMLResponse(content=content)

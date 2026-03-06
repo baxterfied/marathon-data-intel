@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Profile - Marathon Intel</title>
+    <meta property="og:title" content="Player Profile - Marathon Intel">
+    <meta property="og:description" content="Player stats and performance data from Marathon">
+    <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+        .profile {
+            max-width: 800px; margin: 0 auto; padding: 24px 20px;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center; padding: 40px 20px 32px; margin-bottom: 24px;
+            background: linear-gradient(180deg, #0f1118 0%, #0a0a0f 100%);
+            border: 1px solid #00ff8820; border-radius: 12px;
+            position: relative; overflow: hidden;
+        }
+        .hero::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, transparent, #00ff88, transparent);
+        }
+        .hero .gamertag {
+            font-family: 'Bebas Neue', sans-serif; font-size: 3rem;
+            color: #fff; letter-spacing: 4px; line-height: 1.1;
+        }
+        .hero .rank-badge {
+            display: inline-block; margin-top: 12px; padding: 4px 16px;
+            background: #00ff8815; border: 1px solid #00ff8840; border-radius: 20px;
+            font-family: 'Space Mono', monospace; font-size: 0.8rem;
+            color: #00ff88; letter-spacing: 2px; text-transform: uppercase;
+        }
+        .hero .hero-meta {
+            display: flex; justify-content: center; gap: 24px; margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .hero .hero-meta-item {
+            font-size: 0.85rem; color: #8b949e;
+        }
+        .hero .hero-meta-item span {
+            color: #c0c0c0; font-weight: 600;
+        }
+
+        /* Cards */
+        .card {
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+            padding: 20px; margin-bottom: 16px;
+        }
+        .card-title {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.15rem;
+            color: #00ff88; letter-spacing: 2px; margin-bottom: 14px;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+        }
+        .stat {
+            text-align: center; padding: 12px 8px;
+            background: #1a1d24; border-radius: 6px; border: 1px solid #252830;
+        }
+        .stat .val {
+            font-family: 'Bebas Neue', sans-serif; font-size: 2rem;
+            color: #fff; line-height: 1;
+        }
+        .stat .lbl {
+            font-family: 'Space Mono', monospace; font-size: 0.6rem;
+            color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;
+        }
+        .val-green { color: #00ff88 !important; }
+        .val-yellow { color: #ffcc00 !important; }
+        .val-red { color: #ff4455 !important; }
+
+        /* Runner Carousel */
+        .runner-carousel {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
+        }
+        .runner-card {
+            background: #1a1d24; border: 1px solid #252830; border-radius: 8px;
+            padding: 16px; position: relative; overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .runner-card:hover { border-color: #00ff8860; }
+        .runner-card .runner-card-name {
+            font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem;
+            color: #fff; letter-spacing: 1px;
+        }
+        .runner-card .runner-card-stats {
+            display: flex; gap: 12px; margin-top: 8px; font-size: 0.8rem;
+        }
+        .runner-card .runner-card-stats .rcs-item {
+            text-align: center;
+        }
+        .runner-card .runner-card-stats .rcs-val {
+            font-family: 'Space Mono', monospace; font-size: 0.9rem;
+            color: #fff; font-weight: 700;
+        }
+        .runner-card .runner-card-stats .rcs-lbl {
+            font-size: 0.65rem; color: #6b7280; text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .comfort-bar {
+            margin-top: 10px; position: relative;
+        }
+        .comfort-bar-label {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 4px;
+        }
+        .comfort-bar-label span {
+            font-family: 'Space Mono', monospace; font-size: 0.65rem;
+            color: #6b7280; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .comfort-bar-label .comfort-val {
+            color: #c0c0c0; font-weight: 700; font-size: 0.75rem;
+        }
+        .comfort-bar-bg {
+            height: 6px; background: #252830; border-radius: 3px; overflow: hidden;
+        }
+        .comfort-bar-fill {
+            height: 100%; border-radius: 3px;
+            transition: width 0.6s ease-out;
+        }
+
+        /* Match Timeline */
+        .match-timeline {
+            display: flex; flex-wrap: wrap; gap: 6px;
+        }
+        .match-block {
+            width: 36px; height: 36px; border-radius: 4px; cursor: pointer;
+            position: relative; transition: transform 0.15s;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Space Mono', monospace; font-size: 0.6rem; color: #fff;
+            font-weight: 700;
+        }
+        .match-block:hover { transform: scale(1.2); z-index: 2; }
+        .match-block.win { background: #00ff8830; border: 1px solid #00ff8860; }
+        .match-block.loss { background: #ff445530; border: 1px solid #ff445560; }
+        .match-block.draw { background: #ffcc0030; border: 1px solid #ffcc0060; }
+        .match-tooltip {
+            display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+            transform: translateX(-50%); background: #1e2228; border: 1px solid #30363d;
+            border-radius: 6px; padding: 10px 12px; white-space: nowrap;
+            z-index: 10; font-size: 0.75rem; color: #c0c0c0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .match-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%); border: 5px solid transparent;
+            border-top-color: #30363d;
+        }
+        .match-block:hover .match-tooltip { display: block; }
+        .match-tooltip .tt-result { font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+        .match-tooltip .tt-result.win { color: #00ff88; }
+        .match-tooltip .tt-result.loss { color: #ff4455; }
+        .match-tooltip .tt-result.draw { color: #ffcc00; }
+        .match-tooltip .tt-line { color: #8b949e; font-family: 'Space Mono', monospace; font-size: 0.7rem; }
+
+        /* Map Performance */
+        .map-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .map-name {
+            font-weight: 600; color: #fff; min-width: 100px; font-size: 0.85rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .map-bar-bg {
+            flex: 1; height: 10px; background: #1e2228; border-radius: 5px; overflow: hidden;
+        }
+        .map-bar-fill { height: 100%; border-radius: 5px; transition: width 0.5s ease-out; }
+        .map-wr {
+            font-family: 'Space Mono', monospace; font-size: 0.8rem;
+            min-width: 50px; text-align: right;
+        }
+        .map-count {
+            font-family: 'Space Mono', monospace; font-size: 0.7rem;
+            color: #6b7280; min-width: 30px; text-align: right;
+        }
+
+        /* Network */
+        .net-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .net-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .net-good { background: #00ff88; }
+        .net-mid { background: #ffcc00; }
+        .net-bad { background: #ff4455; }
+        .net-label { font-size: 0.9rem; color: #c0c0c0; }
+        .net-val { font-family: 'Space Mono', monospace; font-size: 0.85rem; color: #fff; margin-left: auto; }
+        .net-detail { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #6b7280; }
+
+        /* Share / Footer */
+        .share-row {
+            display: flex; gap: 8px; justify-content: center; margin-top: 24px;
+        }
+        .share-btn {
+            background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            padding: 10px 20px; color: #8b949e; cursor: pointer; font-size: 0.85rem;
+            font-family: 'Rajdhani', sans-serif; font-weight: 600;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .share-btn:hover { border-color: #00ff88; color: #00ff88; }
+        .share-btn.copied { border-color: #00ff88; color: #00ff88; }
+
+        .footer {
+            text-align: center; margin-top: 24px; padding-top: 16px;
+            border-top: 1px solid #30363d;
+        }
+        .footer a { color: #00ff88; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .footer .powered { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+
+        .loading { text-align: center; padding: 60px 20px; color: #6b7280; }
+        .error { text-align: center; padding: 60px 20px; color: #ff4455; }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat .val { font-size: 1.6rem; }
+            .hero .gamertag { font-size: 2.2rem; }
+            .runner-carousel { grid-template-columns: 1fr; }
+            .match-block { width: 30px; height: 30px; font-size: 0.5rem; }
+            .map-name { min-width: 70px; font-size: 0.8rem; }
+            .hero .hero-meta { gap: 12px; }
+        }
+        @media (max-width: 400px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .profile { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="profile" id="profile">
+    <div class="loading" id="loading">Loading player profile...</div>
+</div>
+
+<script>
+const userHash = window.location.pathname.split('/player/')[1] || '';
+
+async function loadProfile() {
+    if (!userHash) {
+        document.getElementById('loading').innerHTML = '<div class="error">No player specified</div>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/player/${encodeURIComponent(userHash)}`);
+        if (!res.ok) throw new Error('No data found');
+        const d = await res.json();
+        render(d);
+    } catch (e) {
+        document.getElementById('loading').innerHTML = `<div class="error">No data found for "${userHash}"</div>`;
+    }
+}
+
+function fmtDamage(d) {
+    if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
+    if (d >= 1000) return (d / 1000).toFixed(1) + 'K';
+    return d.toString();
+}
+
+function wrClass(wr) { return wr >= 55 ? 'val-green' : wr >= 45 ? 'val-yellow' : 'val-red'; }
+function kdClass(kd) { return kd >= 1.5 ? 'val-green' : kd >= 1.0 ? 'val-yellow' : 'val-red'; }
+
+function comfortColor(score) {
+    if (score >= 75) return '#00ff88';
+    if (score >= 50) return '#00cc6a';
+    if (score >= 25) return '#ffcc00';
+    return '#ff4455';
+}
+
+function render(d) {
+    const o = d.overall;
+    const runners = d.runners || [];
+    const maps = d.maps || [];
+    const matches = d.recent_matches || [];
+    const net = d.network || [];
+
+    const hoursPlayed = (o.total_duration_s / 3600).toFixed(1);
+    const memberSince = d.member_since ? new Date(d.member_since).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Unknown';
+
+    let html = '';
+
+    // Hero
+    html += `<div class="hero">
+        <div class="gamertag">${escHtml(d.user_hash)}</div>`;
+    if (o.rank) {
+        html += `<div class="rank-badge">Rank #${o.rank}</div>`;
+    }
+    html += `<div class="hero-meta">
+            <div class="hero-meta-item">Main: <span>${escHtml(o.main_runner || 'N/A')}</span></div>
+            <div class="hero-meta-item">Member since: <span>${memberSince}</span></div>
+        </div>
+    </div>`;
+
+    // Stats Grid
+    html += `<div class="card">
+        <div class="card-title">OVERVIEW</div>
+        <div class="stats-grid">
+            <div class="stat"><div class="val">${o.total_matches}</div><div class="lbl">Matches</div></div>
+            <div class="stat"><div class="val ${wrClass(o.win_rate)}">${o.win_rate}%</div><div class="lbl">Win Rate</div></div>
+            <div class="stat"><div class="val ${kdClass(o.kd)}">${o.kd}</div><div class="lbl">K/D</div></div>
+            <div class="stat"><div class="val">${fmtDamage(o.avg_damage)}</div><div class="lbl">Avg Damage</div></div>
+            <div class="stat"><div class="val">${fmtDamage(o.total_damage)}</div><div class="lbl">Total Damage</div></div>
+            <div class="stat"><div class="val">${hoursPlayed}h</div><div class="lbl">Hours Played</div></div>
+        </div>
+    </div>`;
+
+    // Runner Carousel
+    if (runners.length > 0) {
+        html += `<div class="card">
+            <div class="card-title">RUNNERS</div>
+            <div class="runner-carousel">`;
+        runners.forEach(r => {
+            const cc = comfortColor(r.comfort_score);
+            html += `<div class="runner-card">
+                <div class="runner-card-name">${escHtml(r.runner_name)}</div>
+                <div class="runner-card-stats">
+                    <div class="rcs-item"><div class="rcs-val ${wrClass(r.win_rate)}">${r.win_rate}%</div><div class="rcs-lbl">WR</div></div>
+                    <div class="rcs-item"><div class="rcs-val">${r.matches}</div><div class="rcs-lbl">Matches</div></div>
+                    <div class="rcs-item"><div class="rcs-val ${kdClass(r.kd)}">${r.kd}</div><div class="rcs-lbl">K/D</div></div>
+                </div>
+                <div class="comfort-bar">
+                    <div class="comfort-bar-label">
+                        <span>Comfort</span>
+                        <span class="comfort-val" style="color:${cc}">${r.comfort_score}</span>
+                    </div>
+                    <div class="comfort-bar-bg">
+                        <div class="comfort-bar-fill" style="width:${r.comfort_score}%;background:${cc}"></div>
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // Match History Timeline
+    if (matches.length > 0) {
+        html += `<div class="card">
+            <div class="card-title">RECENT MATCHES</div>
+            <div class="match-timeline">`;
+        matches.forEach(m => {
+            const cls = m.result === 'win' ? 'win' : m.result === 'loss' ? 'loss' : 'draw';
+            const kda = `${m.kills}/${m.deaths}/${m.assists}`;
+            const dur = m.duration_s > 0 ? Math.floor(m.duration_s / 60) + ':' + String(m.duration_s % 60).padStart(2, '0') : '';
+            const date = m.created_at ? new Date(m.created_at).toLocaleDateString() : '';
+            html += `<div class="match-block ${cls}">
+                ${m.kills}
+                <div class="match-tooltip">
+                    <div class="tt-result ${cls}">${m.result}</div>
+                    <div class="tt-line">${escHtml(m.runner_name)} on ${escHtml(m.map_name)}</div>
+                    <div class="tt-line">${kda} | ${fmtDamage(m.damage)} dmg</div>
+                    ${dur ? `<div class="tt-line">${dur} | ${date}</div>` : `<div class="tt-line">${date}</div>`}
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // Map Performance
+    if (maps.length > 0) {
+        html += `<div class="card">
+            <div class="card-title">MAP PERFORMANCE</div>`;
+        maps.forEach(m => {
+            const wr = parseFloat(m.win_rate);
+            const barColor = wr >= 55 ? '#00ff88' : wr >= 45 ? '#ffcc00' : '#ff4455';
+            html += `<div class="map-bar-row">
+                <div class="map-name">${escHtml(m.map_name)}</div>
+                <div class="map-bar-bg"><div class="map-bar-fill" style="width:${wr}%;background:${barColor}"></div></div>
+                <div class="map-wr" style="color:${barColor}">${wr}%</div>
+                <div class="map-count">${m.matches}</div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Network Stats
+    if (net.length > 0) {
+        html += `<div class="card">
+            <div class="card-title">NETWORK</div>`;
+        net.forEach(r => {
+            const ping = parseFloat(r.avg_ping);
+            const cls = ping < 50 ? 'net-good' : ping < 100 ? 'net-mid' : 'net-bad';
+            html += `<div class="net-row">
+                <div class="net-dot ${cls}"></div>
+                <div class="net-label">${escHtml(r.region)}</div>
+                <div class="net-val">${r.avg_ping}ms</div>
+                <div class="net-detail">${r.sessions} sessions | peak ${r.peak_ping}ms</div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Share
+    html += `<div class="share-row">
+        <button class="share-btn" onclick="copyLink()">Copy Profile Link</button>
+    </div>`;
+
+    // Footer
+    html += `<div class="footer">
+        <a href="/">Home</a> | <a href="/leaderboard">Leaderboard</a> | <a href="/me">Dashboard</a>
+        <div class="powered">Powered by Marathon Intel - Community network capture</div>
+    </div>`;
+
+    document.getElementById('profile').innerHTML = html;
+    document.title = `${d.user_hash} - Marathon Intel`;
+}
+
+function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s || '';
+    return div.innerHTML;
+}
+
+function copyLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+        const btn = document.querySelector('.share-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy Profile Link'; btn.classList.remove('copied'); }, 2000);
+    });
+}
+
+loadProfile();
+</script>
+</body>
+</html>

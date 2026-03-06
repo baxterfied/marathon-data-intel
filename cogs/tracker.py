@@ -754,6 +754,15 @@ class Tracker(commands.Cog):
         # Invalidate match caches
         await invalidate_match_caches(self._redis())
 
+        # Update seasonal ladder SR
+        sr_result = None
+        try:
+            from services.database import update_sr
+            display_name = interaction.user.display_name or str(interaction.user)
+            sr_result = await update_sr(pool, user_hash, display_name, result_value, kills, deaths)
+        except Exception:
+            pass  # SR failure should never block match submission
+
         # Confirmation embed
         embed = discord.Embed(
             title="Match Submitted",
@@ -768,6 +777,14 @@ class Tracker(commands.Cog):
             embed.add_field(name="Primary", value=primary_weapon, inline=True)
         if secondary_weapon:
             embed.add_field(name="Secondary", value=secondary_weapon, inline=True)
+        if sr_result:
+            change = sr_result["sr_change"]
+            sign = "+" if change >= 0 else ""
+            embed.add_field(
+                name="SR Update",
+                value=f"**{sr_result['new_sr']}** ({sign}{change}) | {sr_result['tier']}",
+                inline=False,
+            )
         embed.set_footer(text=f"Recorded for {user_hash}")
 
         # Generate AI match commentary if available
