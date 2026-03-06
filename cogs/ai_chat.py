@@ -28,16 +28,10 @@ class AIChat(commands.Cog):
         if message.author.bot:
             return
 
-        # Respond when mentioned or when message contains trigger words
+        # Only respond when the bot is directly @mentioned
         mentioned = self.bot.user in message.mentions if self.bot.user else False
-        content_lower = message.content.lower()
-
         if not mentioned:
-            # Check if it looks like a question about Marathon
-            has_trigger = any(w in content_lower for w in TRIGGER_WORDS)
-            ends_question = message.content.strip().endswith("?")
-            if not (has_trigger and ends_question):
-                return
+            return
 
         pool = getattr(self.bot, "pool", None)
         redis = getattr(self.bot, "redis", None)
