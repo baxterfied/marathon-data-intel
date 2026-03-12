@@ -76,6 +76,13 @@ class MatchSubmission(BaseModel):
         return v.strip()
 
 
+class RelayHopInfo(BaseModel):
+    ip: str = ""
+    region: str = "unknown"
+    duration_s: int = 0
+    ping_ms: float = 0
+
+
 class LiveStatusUpdate(BaseModel):
     user_hash: str = Field(..., min_length=1, max_length=100)
     state: str = "idle"  # idle, queuing, in_match
@@ -88,6 +95,7 @@ class LiveStatusUpdate(BaseModel):
     match_duration_s: int = 0
     queue_time_s: int = 0
     packets_per_sec: float = 0
+    relay_hops: list[RelayHopInfo] = Field(default_factory=list)
     session_matches: int = 0
     session_wins: int = 0
     session_losses: int = 0
@@ -99,9 +107,12 @@ class NetworkSubmission(BaseModel):
     region: str = "unknown"
     map_name: str = "unknown"
     avg_ping_ms: float = 0
+    min_ping_ms: float = 0
+    max_ping_ms: float = 0
     jitter_ms: float = 0
     packet_loss: float = 0
     tick_rate: int = 0
+    rtt_samples: int = 0
     patch: str = "1.0"
 
 
@@ -123,6 +134,7 @@ class MatchSessionSubmission(BaseModel):
     avg_ping_ms: float = 0
     total_packets: int = 0
     queue_time_s: int = 0
+    relay_hops: list[RelayHopInfo] = Field(default_factory=list)
     patch: str = "1.0"
 
 
@@ -306,10 +318,11 @@ def create_app(bot) -> FastAPI:
         if not pool:
             raise HTTPException(503, "Database offline")
         await pool.execute(
-            "INSERT INTO network_performance (user_hash, server_ip, region, map_name, avg_ping_ms, jitter_ms, packet_loss, tick_rate, patch) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            "INSERT INTO network_performance (user_hash, server_ip, region, map_name, avg_ping_ms, min_ping_ms, max_ping_ms, jitter_ms, packet_loss, tick_rate, rtt_samples, patch) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
             data.user_hash, data.server_ip, data.region, data.map_name,
-            data.avg_ping_ms, data.jitter_ms, data.packet_loss, data.tick_rate, data.patch,
+            data.avg_ping_ms, data.min_ping_ms, data.max_ping_ms,
+            data.jitter_ms, data.packet_loss, data.tick_rate, data.rtt_samples, data.patch,
         )
         return {"status": "recorded"}
 
@@ -759,6 +772,7 @@ def create_app(bot) -> FastAPI:
                 "match_duration_s": status.match_duration_s,
                 "queue_time_s": status.queue_time_s,
                 "packets_per_sec": status.packets_per_sec,
+                "relay_hops": [h.model_dump() for h in status.relay_hops],
                 "session_matches": status.session_matches,
                 "session_wins": status.session_wins,
                 "session_losses": status.session_losses,
@@ -1752,6 +1766,17 @@ def create_app(bot) -> FastAPI:
         if f.exists():
             return FileResponse(f)
         raise HTTPException(404)
+
+    @app.get("/exports/{filename}")
+    async def download_export(filename: str):
+        """Serve export files for download."""
+        import re
+        if not re.match(r'^[\w\-]+\.json$', filename):
+            raise HTTPException(400, "Invalid filename")
+        f = PUBLIC_DIR / "exports" / filename
+        if not f.exists():
+            raise HTTPException(404)
+        return FileResponse(f, media_type="application/json", filename=filename)
 
     @app.get("/api-tool")
     async def api_tool_page():
